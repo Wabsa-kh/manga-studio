@@ -65,6 +65,8 @@ class InstallTests(unittest.TestCase):
   self.assertIn(' out=pkg.deb',result);self.assertIn(' dir=/var/cache/apt/archives',result)
   regional=download_list("'http://us-east-2.ec2.archive.ubuntu.com/ubuntu/pool/pkg.deb' pkg.deb 123 MD5Sum:abc")
   self.assertTrue(regional.startswith('https://archive.ubuntu.com/ubuntu/pool/pkg.deb'))
+  mirrored=download_list("'mirror+file:/etc/apt/apt-mirrors.txt/pool/main/p/pkg.deb' pkg.deb 123 MD5Sum:abc")
+  self.assertTrue(mirrored.startswith('https://archive.ubuntu.com/ubuntu/pool/main/p/pkg.deb'))
  def test_reject_download_path_traversal(self):
   from scripts.install_media import download_list
   with self.assertRaises(ValueError):download_list("'https://archive.ubuntu.com/pkg.deb' ../pkg.deb 123")
