@@ -9,6 +9,15 @@ from manga_bot.manage import add,doctor
 from manga_bot.providers import Google,MODELS
 
 class StudioTests(unittest.TestCase):
+ def test_colab_allocation_failure_keeps_details_private_for_diagnosis(self):
+  from manga_bot.colab_bridge import launch
+  import subprocess
+  with tempfile.TemporaryDirectory() as d:
+   failed=subprocess.CompletedProcess([],1,b'',b'Runtime allocation denied: fixture-private-details')
+   with patch.dict(os.environ,{'COLAB_ADC_JSON':'{}','MANGA_RCLONE_CONFIG':'fixture-drive'}),patch('manga_bot.colab_bridge.subprocess.run',return_value=failed):
+    with self.assertRaises(Attention) as caught:launch('abc',{'state_root':d,'_colab_stage':'download'})
+   self.assertNotIn('fixture-private-details',str(caught.exception))
+   self.assertIn('fixture-private-details',read(Path(d)/'diagnostics/colab-abc-new.json')['private_output'])
  def test_manager_uses_colab_download_and_can_continue_without_gpu_upscale(self):
   from manga_bot.manage import worker
   with tempfile.TemporaryDirectory() as d:

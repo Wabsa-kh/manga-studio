@@ -12,8 +12,15 @@ def launch(manga_id,settings):
  with tempfile.TemporaryDirectory(prefix='manga-colab-private-') as d:
   temp=Path(d);adc=temp/'adc.json';adc.write_text(os.environ['COLAB_ADC_JSON'],encoding='utf-8');adc.chmod(0o600);env={**os.environ,'GOOGLE_APPLICATION_CREDENTIALS':str(adc)}
   def call(args,timeout=300):
-   result=subprocess.run(['colab','--auth','adc',*args],env=env,capture_output=True,timeout=timeout)
-   if result.returncode:raise Attention('Colab CLI operation failed; inspect authentication/runtime availability locally. Private command output was not logged.')
+   try:result=subprocess.run(['colab','--auth','adc',*args],env=env,capture_output=True,timeout=timeout)
+   except subprocess.TimeoutExpired:
+    if settings.get('state_root'):save(Path(settings['state_root'])/'diagnostics'/('colab-'+manga_id+'-'+args[0]+'.json'),dict(operation=args[0],stage=stage,state='timeout'))
+    raise Attention('Colab '+stage+' operation timed out; saved task progress will be restored') from None
+   if result.returncode:
+    if settings.get('state_root'):
+     output=(result.stdout+b'\n'+result.stderr).decode('utf-8',errors='replace')[-12000:]
+     save(Path(settings['state_root'])/'diagnostics'/('colab-'+manga_id+'-'+args[0]+'.json'),dict(operation=args[0],stage=stage,exit_code=result.returncode,private_output=output))
+    raise Attention('Colab '+stage+' operation failed; inspect the private Drive diagnostics for runtime/authentication details')
   archive=temp/'code.zip'
   with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
    for path in (repo/'manga_bot').glob('*.py'):z.write(path,'manga_bot/'+path.name)
