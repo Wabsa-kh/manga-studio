@@ -19,22 +19,23 @@ class LocalStore:
 
 class StorageFailure(Attention):
  """Only an allowlisted category may enter public worker diagnostics."""
- def __init__(self,code):
-  self.code=code
+ def __init__(self,code,private_details=''):
+  self.code=code;self.private_details=private_details
   messages={
    'storage_rate_limited':'Persistent storage is rate limited; saved checkpoints remain intact. Review Drive app quota and retry later.',
    'storage_full':'Persistent storage is full; free space or connect more storage before continuing.',
    'storage_authorization':'Persistent storage authorization needs renewal or permission review.',
    'storage_timeout':'Persistent storage timed out; no generation dispatched before checkpoint acknowledgement.',
-   'storage_operation_failed':'Persistent storage operation failed; no API generation dispatched. Check rclone connection/space.'}
+   'storage_operation_failed':'Persistent storage operation failed. Generation cannot continue until storage is acknowledged.'}
   super().__init__(messages[code])
 
 def storage_failure(stderr):
- text=stderr.decode('utf-8',errors='replace').lower() if isinstance(stderr,bytes) else str(stderr).lower()
- if any(s in text for s in ('storagequotaexceeded','storage quota has been exceeded','no space left')):return StorageFailure('storage_full')
- if any(s in text for s in ('ratelimitexceeded','rate limit exceeded','quota metric','too many requests','429')):return StorageFailure('storage_rate_limited')
- if any(s in text for s in ('invalid_grant','unauthorized','insufficientpermissions','insufficient authentication scopes','access denied')):return StorageFailure('storage_authorization')
- return StorageFailure('storage_operation_failed')
+ details=stderr.decode('utf-8',errors='replace') if isinstance(stderr,bytes) else str(stderr);text=details.lower()
+ if any(s in text for s in ('storagequotaexceeded','storage quota has been exceeded','no space left')):code='storage_full'
+ elif any(s in text for s in ('ratelimitexceeded','rate limit exceeded','quota metric','too many requests','429')):code='storage_rate_limited'
+ elif any(s in text for s in ('invalid_grant','unauthorized','insufficientpermissions','insufficient authentication scopes','access denied')):code='storage_authorization'
+ else:code='storage_operation_failed'
+ return StorageFailure(code,details[-12000:])
 
 class RcloneStore:
  def __init__(self,remote):
@@ -56,7 +57,7 @@ class RcloneStore:
     target=root/key(name);target.parent.mkdir(parents=True,exist_ok=True)
     try:os.link(source,target)
     except OSError:shutil.copyfile(source,target)
-   self.command(['copy',str(root),self.remote,'--immutable','--fast-list','--transfers','4','--checkers','4'])
+   self.command(['copy',str(root),self.remote,'--immutable','--checksum','--fast-list','--transfers','4','--checkers','4'])
  def get_many(self,entries):
   with tempfile.TemporaryDirectory(prefix='manga-bulk-get-') as folder:
    root=Path(folder);listing=root/'files.txt';listing.write_text(''.join(key(name)+'\n' for name,_ in entries),encoding='utf-8');staged=root/'data'

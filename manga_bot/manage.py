@@ -145,7 +145,10 @@ def worker(cfg,url=None,retry_id=None):
           if asset.is_file() and snapshot.lazy(asset) and asset.relative_to(root).as_posix() in snapshot.entries:snapshot.evict_path(asset)
        if not progress:item['state']='complete';break
     except Pending as exc:item.update(state='waiting',reason=exc.reason,resume_epoch=exc.resume)
-    except Attention as exc:item.update(state='needs_review',reason=str(exc));event(root,'job_attention',manga_id=item['id'],reason=str(exc))
+    except Attention as exc:
+     from .storage import StorageFailure
+     if isinstance(exc,StorageFailure):save(Path(item['directory'])/'storage-error.json',dict(code=exc.code,private_details=exc.private_details))
+     item.update(state='needs_review',reason=str(exc));event(root,'job_attention',manga_id=item['id'],reason=str(exc))
     except Exception as exc:
      item.update(state='technical_error',reason=type(exc).__name__+': '+str(exc),resume_epoch=time.time()+3600);(Path(item['directory'])/'technical-error.txt').write_text(traceback.format_exc(),encoding='utf-8')
     finally:
