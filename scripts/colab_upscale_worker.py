@@ -1,5 +1,5 @@
 """Download in Colab CPU or upscale in Colab GPU via the official CLI."""
-import json,os,subprocess,sys,zipfile,time
+import json,os,subprocess,sys,zipfile,time,logging
 from pathlib import Path
 
 def main():
@@ -17,6 +17,8 @@ def main():
  state=root/'state';store=RcloneStore(connection['remote']);snapshot=Snapshot(state,store,lazy_media=True)
  try:
   if not snapshot.restore():raise RuntimeError('No persisted manga task found')
+  logs=state/'diagnostics';logs.mkdir(parents=True,exist_ok=True)
+  logging.basicConfig(filename=str(logs/('colab-'+connection['manga_id']+'-'+stage+'.log')),level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s',force=True)
   cfg=connection.get('settings',{});cfg.setdefault('download',{});cfg.setdefault('upscale',{})
   cfg.setdefault('_deadline',time.time()+cfg.get('max_run_minutes',240)*60)
   process(snapshot,connection['manga_id'],stage,cfg);print('Colab task checkpoint published',flush=True)

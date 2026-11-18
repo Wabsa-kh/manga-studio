@@ -36,7 +36,8 @@ def verified_images(folder,expected):
 def download(root,job,settings,checkpoint=lambda:None):
  root=Path(root);folder=vendor(root,'downloader');sys.path.insert(0,str(folder));module=importlib.import_module('weebcentral_scraper');config=settings['download'];source=Path(job['directory'])/'source';source.mkdir(parents=True,exist_ok=True);scraper=module.WeebCentralScraper(job['url'],output_dir=str(source),delay=config.get('delay_seconds',1.5),max_threads=config.get('threads',2));chapters=scraper.get_chapters()
  if not chapters:raise Pending('No chapters returned; download remains incomplete',time.time()+3600)
- job['expected_chapters']=len(chapters);completed=0;limit=config.get('chapter_limit_per_run',0) or len(chapters)
+ job.update(expected_chapters=len(chapters),source=str(source.resolve()));checkpoint()
+ completed=0;limit=config.get('chapter_limit_per_run',0) or len(chapters)
  for chapter in chapters:
   if time.time()>settings.get('_deadline',float('inf'))-120:raise Pending('Download time budget reached; chapter receipts preserved',time.time()+60)
   safe=re.sub(r'[\\/*?:"<>|]','_',chapter['name']);dest=source/safe
@@ -52,7 +53,8 @@ def download(root,job,settings,checkpoint=lambda:None):
     try:
      with Image.open(page) as im:im.load()
     except (OSError,ValueError):page.rename(page.with_name(page.name+'.corrupt'))
-  count,directory=scraper.download_chapter(chapter);files=verified_images(dest,len(urls));result=dict(chapter=chapter['name'],url=chapter['url'],expected_pages=len(urls),files=files or [],complete=files is not None);save(receipt,result);checkpoint()
+  count,directory=scraper.download_chapter(chapter);files=verified_images(dest,len(urls));result=dict(chapter=chapter['name'],url=chapter['url'],expected_pages=len(urls),files=files or [],complete=files is not None);save(receipt,result)
+  job['downloaded_chapters']=completed+int(result['complete']);checkpoint()
   if not result['complete']:raise Pending('Partial chapter saved; will retry '+chapter['name'],time.time()+600)
   if any(p.suffix.lower()=='.gif' for p in dest.glob('*')):raise Attention('A GIF page requires an explicit conversion adapter before source inventory')
   completed+=1;limit-=1
