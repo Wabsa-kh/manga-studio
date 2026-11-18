@@ -63,6 +63,8 @@ class InstallTests(unittest.TestCase):
   from scripts.install_media import download_list
   result=download_list("Reading package lists...\n'https://archive.ubuntu.com/ubuntu/pool/pkg.deb' pkg.deb 123 MD5Sum:abc\n")
   self.assertIn(' out=pkg.deb',result);self.assertIn(' dir=/var/cache/apt/archives',result)
+  regional=download_list("'http://us-east-2.ec2.archive.ubuntu.com/ubuntu/pool/pkg.deb' pkg.deb 123 MD5Sum:abc")
+  self.assertTrue(regional.startswith('https://archive.ubuntu.com/ubuntu/pool/pkg.deb'))
  def test_reject_download_path_traversal(self):
   from scripts.install_media import download_list
   with self.assertRaises(ValueError):download_list("'https://archive.ubuntu.com/pkg.deb' ../pkg.deb 123")

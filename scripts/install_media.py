@@ -13,6 +13,9 @@ def download_list(output):
   if len(fields)<3:raise ValueError('Incomplete apt download entry')
   url,name,size=fields[:3]
   if urlparse(url).scheme not in ('http','https') or Path(name).name!=name or '/' in name or '\\' in name or name in ('.','..') or not size.isdigit():raise ValueError('Invalid apt download entry')
+  parsed=urlparse(url)
+  if parsed.hostname=='archive.ubuntu.com' or (parsed.hostname or '').endswith('.archive.ubuntu.com'):
+   url=parsed._replace(scheme='https',netloc='archive.ubuntu.com').geturl()
   lines.extend([url,' out='+name,' dir=/var/cache/apt/archives'])
  return '\n'.join(lines)+'\n' if lines else ''
 
