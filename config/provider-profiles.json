@@ -1,0 +1,43 @@
+{
+  "note": "Route examples and measured status, not a promise of provider quota. Active stage routes are in settings.json.",
+  "profiles": {
+    "nim_writer": {
+      "provider": "nim",
+      "model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+      "images": false,
+      "enable_thinking": true,
+      "temperature": 0.8,
+      "top_p": 0.95,
+      "max_tokens": 65536,
+      "timeout_seconds": 420,
+      "daily_requests": 100,
+      "rpm": 8,
+      "status": "Passed production writer validation using four pages of cached Google evidence; full-book quality not qualified"
+    },
+    "openrouter_writer": {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3.5-super-vl:free",
+      "images": false,
+      "temperature": 0.8,
+      "top_p": 0.95,
+      "max_tokens": 65536,
+      "timeout_seconds": 420,
+      "daily_requests": 50,
+      "rpm": 8,
+      "status": "Passed production writer validation using four pages of cached Google evidence; zero token pricing checked live"
+    },
+    "nim_reader_candidate": {
+      "provider": "nim",
+      "model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+      "images": true,
+      "max_images": 4,
+      "enable_thinking": true,
+      "max_tokens": 24576,
+      "timeout_seconds": 180,
+      "daily_requests": 100,
+      "rpm": 8,
+      "enabled": false,
+      "status": "Format validation passed after removing schema-forbidden fields; source inspection found speaker/action mistakes. Not enabled for production reading."
+    }
+  }
+}

@@ -2,6 +2,7 @@
   "state_root": "state",
   "manga_list_file": "config/manga.json",
   "max_run_minutes": 240,
+  "short_wait_seconds": 120,
   "part_minutes": [
     45,
     60
@@ -45,7 +46,32 @@
       "provider": "google",
       "model": "gemini-4-hydrogen",
       "daily_requests": 18,
-      "rpm": 3
+      "rpm": 3,
+      "fallbacks": [
+        {
+          "provider": "nim",
+          "model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+          "images": false,
+          "enable_thinking": true,
+          "temperature": 0.8,
+          "top_p": 0.95,
+          "max_tokens": 65536,
+          "timeout_seconds": 420,
+          "daily_requests": 100,
+          "rpm": 8
+        },
+        {
+          "provider": "openrouter",
+          "model": "nvidia/nemotron-3.5-super-vl:free",
+          "images": false,
+          "temperature": 0.8,
+          "top_p": 0.95,
+          "max_tokens": 65536,
+          "timeout_seconds": 420,
+          "daily_requests": 50,
+          "rpm": 8
+        }
+      ]
     },
     "tts": {
       "provider": "google",
@@ -70,5 +96,15 @@
     "privacy": "private",
     "prepare_metadata": true,
     "max_uploads_per_run": 1
+  },
+  "quota_limits": {
+    "nim": {
+      "rpm": 24,
+      "daily_requests": 500
+    },
+    "openrouter": {
+      "rpm": 20,
+      "daily_requests": 50
+    }
   }
 }

@@ -27,12 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      MANGA_RCLONE_CONFIG: ${{ secrets.MANGA_RCLONE_CONFIG }}
       MANGA_STORE_REMOTE: ${{ vars.MANGA_STORE_REMOTE }}
-      COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
-      YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
-      YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
       MANGA_URL: ${{ inputs.manga_url }}
       MANGA_RETRY_ID: ${{ inputs.retry_manga_id }}
       DRY_RUN: ${{ inputs.dry_run }}
@@ -51,7 +46,15 @@ jobs:
           python scripts/install_media.py ffmpeg rclone
           python -m pip install --disable-pip-version-check --timeout 30 --retries 2 -r manga_bot/requirements.txt google-colab-cli
           timeout 30s colab exec --help
+          python scripts/check_config.py
       - name: Check configuration and process bounded work
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MODEL_CREDENTIALS_JSON: ${{ secrets.MODEL_CREDENTIALS_JSON }}
+          MANGA_RCLONE_CONFIG: ${{ secrets.MANGA_RCLONE_CONFIG }}
+          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         run: python scripts/github_worker.py
       - name: Keep public-safe connection report
         if: always()

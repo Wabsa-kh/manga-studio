@@ -27,6 +27,9 @@ def report(root):
 def doctor(cfg):
  checks=dict(python=sys.version.split()[0],ffmpeg=bool(shutil.which('ffmpeg')),rclone=bool(shutil.which('rclone')),gemini_key_configured=bool(os.environ.get('GEMINI_API_KEY')),storage=cfg['storage']['backend'],remote_configured=bool(os.environ.get(cfg['storage'].get('remote_env','MANGA_STORE_REMOTE'))),colab_cli=bool(shutil.which('colab')),youtube_enabled=cfg['youtube']['enabled'])
  checks['drive_credentials_configured']=bool(os.environ.get('MANGA_RCLONE_CONFIG'));checks['colab_credentials_configured']=bool(os.environ.get('COLAB_ADC_JSON'))
+ if os.environ.get('MODEL_CREDENTIALS_JSON'):
+  from .credentials import load_credentials
+  rows=load_credentials();checks['gemini_key_configured']=any(r['provider']=='google' for r in rows);checks['model_pool_credentials']=len(rows);checks['nim_configured']=any(r['provider']=='nim' for r in rows);checks['openrouter_configured']=any(r['provider']=='openrouter' for r in rows)
  checks['storage_ready']=cfg['storage']['backend']=='local' or checks['rclone'] and checks['remote_configured'] and checks['drive_credentials_configured']
  checks['publishing_ready']=checks['storage_ready'] and checks['youtube_enabled'] and bool(os.environ.get('YOUTUBE_TOKEN_JSON')) and bool(os.environ.get('YOUTUBE_CHANNEL_ID'))
  checks['production_ready']=checks['ffmpeg'] and checks['gemini_key_configured'] and checks['storage_ready'] and (not cfg['upscale']['enabled'] or checks['colab_cli'] and checks['colab_credentials_configured']);return checks
@@ -107,11 +110,15 @@ def worker(cfg,url=None,retry_id=None):
       if failure:raise failure
       if not item.get('upscale_complete'):raise Attention('Colab returned without a verified completion receipt')
      from .worker import initialize,turn,status
-     from .providers import Google
-     jobcfg={**{k:v for k,v in cfg.items() if k!='_console_log'},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state'),'part_minutes':item.get('part_minutes',cfg.get('part_minutes',[45,60]))};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint);api.assets=snapshot;item['state']='producing'
+     from .routing import Router as Google
+     jobcfg={**{k:v for k,v in cfg.items() if k!='_console_log'},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state'),'part_minutes':item.get('part_minutes',cfg.get('part_minutes',[45,60]))};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint,quota_limits=cfg.get('quota_limits'));api.assets=snapshot;item['state']='producing'
      with Singleton(jobroot/'worker.lock'):
       while time.time()<deadline:
-       progress=turn(jobroot,inventory,api,jobcfg)
+       try:progress=turn(jobroot,inventory,api,jobcfg)
+       except Pending as exc:
+        status(jobroot,api,'waiting',reason=exc.reason,resume_epoch=exc.resume)
+        if not short_wait(exc,cfg,deadline,lambda:(save(root/'library.json',library),report(root),snapshot.checkpoint())):raise
+        continue
        if cfg.get('youtube',{}).get('prepare_metadata'):
         from .publishing import queue
         queue(jobroot)
@@ -138,6 +145,14 @@ def worker(cfg,url=None,retry_id=None):
    report(root);snapshot.checkpoint()
  finally:
   if hasattr(snapshot.store,'close'):snapshot.store.close()
+
+def short_wait(exc,cfg,deadline,checkpoint):
+ """Minute-level pacing stays in this run; long quota resets return to schedule."""
+ delay=exc.resume-time.time()
+ if not 0<delay<=cfg.get('short_wait_seconds',120) or exc.resume>=deadline-60:return False
+ checkpoint()
+ while time.time()<exc.resume:time.sleep(min(15,max(.05,exc.resume-time.time())))
+ return True
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--settings',default='config/settings.json');sub=p.add_subparsers(dest='command',required=True);a=sub.add_parser('add');a.add_argument('url');a.add_argument('--title');sub.add_parser('list');sub.add_parser('doctor');r=sub.add_parser('run');r.add_argument('--url');r.add_argument('--retry-id');sub.add_parser('report');fetch=sub.add_parser('pull');fetch.add_argument('manga_id');fetch.add_argument('part_id');fetch.add_argument('--destination',required=True);args=p.parse_args();cfg=settings(args.settings);root=Path(cfg['state_root'])

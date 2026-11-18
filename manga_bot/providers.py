@@ -9,10 +9,14 @@ from quota_control import hold_reason,learn_limit
 MODELS={'reader':'gemini-3.5-flash-lite','writer':'gemini-4-hydrogen','tts':'gemini-3.8-flash-tts'}
 
 class Google:
- def __init__(self,root,shared=None,options=None,checkpoint=None):
+ def credential_retry(self,old):
+  audit=getattr(self,'audit',{})
+  return bool(old and audit and old.get('credential_id')!=audit.get('credential_id') and old.get('status') in (401,429) and (old.get('status')==401 or old.get('quota_group')!=audit.get('quota_group')))
+ def __init__(self,root,shared=None,options=None,checkpoint=None,key_getter=None):
   self.root=Path(root);self.shared=Path(shared or self.root/'provider-state');self.shared.mkdir(parents=True,exist_ok=True);self.budget=Budget(self.shared/'budget.sqlite');self.quota_lock=threading.Lock()
   self.limits={MODELS['reader']:(440,8),MODELS['writer']:(18,3),MODELS['tts']:(9,2)}
   self.models={**MODELS};self.checkpoint=checkpoint or (lambda:None)
+  self.key_getter=key_getter or (lambda:credentials('gemini',0))
   for stage,route in (options or {}).items():
    if route.get('provider','google')!='google':raise Attention('Configured provider requires its own validated adapter: '+route['provider'])
    self.models[stage]=route.get('model',MODELS[stage]);self.limits[self.models[stage]]=(route.get('daily_requests',self.limits[MODELS[stage]][0]),route.get('rpm',self.limits[MODELS[stage]][1]))
@@ -38,7 +42,7 @@ class Google:
   model=self.models[stage];config=dict(model=model,system=system,payload=payload,pages=[dict(page_id=p['page_id'],sha256=p['sha256']) for p in pages],schema=schema,max_tokens=max_tokens,thinking=thinking,adapter='bot-native-v11')
   signature=digest(config);folder=self.root/'requests'/signature;folder.mkdir(parents=True,exist_ok=True);receipt=folder/'result.json';old=read(receipt)
   if old and (old.get('complete') or old.get('known_incomplete')):return old
-  attempt=0 if (old or {}).get('status')==429 else (old or {}).get('attempt',0)
+  attempt=0 if (old or {}).get('status')==429 or self.credential_retry(old) else (old or {}).get('attempt',0)
   if old:
    if old.get('fatal'):raise Attention(old['reason'])
    if old.get('status')=='started_unknown':
@@ -47,14 +51,14 @@ class Google:
     until=old['started_epoch']+3600
     if time.time()<until:raise Pending('Unknown accepted request cooling down; reservation retained',until)
     if attempt>=2:raise Attention('Repeated unknown provider request; no further replay')
-   if old.get('retry_epoch',0)>time.time():raise Pending(old.get('reason','Retry cooldown'),old['retry_epoch'])
+   if old.get('retry_epoch',0)>time.time() and not self.credential_retry(old):raise Pending(old.get('reason','Retry cooldown'),old['retry_epoch'])
    if attempt>=3:
     if old.get('status') in {408,500,502,503,504}:
      retry=old.get('started_epoch',time.time())+3600
      if time.time()<retry:raise Pending('Service unavailable after bounded attempts; hourly cooldown',retry)
      attempt=0
     else:raise Attention('Bounded provider attempts exhausted')
-  ident=self.before(model);key=credentials('gemini',0);parts=[dict(text=json.dumps(payload,ensure_ascii=False))]
+  ident=self.before(model);key=self.key_getter();parts=[dict(text=json.dumps(payload,ensure_ascii=False))]
   for p in pages:
    if sha(p['path'])!=p['sha256']:raise Attention('Source changed after inventory: '+p['page_id'])
    raw=Path(p['path']).read_bytes();parts.extend([dict(text='Original page '+p['page_id']),dict(inlineData=dict(mimeType=mimetypes.guess_type(p['path'])[0] or 'image/png',data=base64.b64encode(raw).decode()))])
@@ -62,7 +66,7 @@ class Google:
   if thinking:generation['thinkingConfig']=dict(thinkingLevel=thinking.upper())
   body=dict(systemInstruction=dict(parts=[dict(text=system)]),contents=[dict(role='user',parts=parts)],generationConfig=generation)
   if old:save(folder/f'attempt-{attempt}.json',old)
-  result=dict(config=config,status='started_unknown',attempt=attempt+1,reservation_id=ident,started_epoch=time.time(),started_utc=utc(),complete=False);save(receipt,result);event(self.root,'provider_started',stage=stage,model=model,pages=len(pages),receipt=str(receipt.relative_to(self.root)))
+  result=dict(config=config,status='started_unknown',attempt=attempt+1,reservation_id=ident,started_epoch=time.time(),started_utc=utc(),complete=False);result.update(getattr(self,'audit',{}));save(receipt,result);event(self.root,'provider_started',stage=stage,model=model,pages=len(pages),receipt=str(receipt.relative_to(self.root)))
   self.checkpoint()
   start=time.monotonic();text=[];finish=None;usage={}
   try:
@@ -98,9 +102,9 @@ class Google:
   model=self.models['tts'];config=dict(model=model,voice='Charon',text=text,style='Clear, natural third-person storytelling. Neutral English, simple conversational delivery, no theatrical exaggeration.');folder=Path(folder);folder.mkdir(parents=True,exist_ok=True);audio=folder/'voice.wav';receipt=folder/'result.json';old=read(receipt);signature=digest(config)
   if hasattr(self,'assets'):self.assets.ensure_path(audio,missing_ok=not bool(old and old.get('complete')))
   if old and old.get('complete') and old.get('signature')==signature and audio.exists() and sha(audio)==old['audio_sha256']:return old
-  if old and old.get('retry_epoch',0)>time.time():raise Pending('Speech request cooldown',old['retry_epoch'])
+  if old and old.get('retry_epoch',0)>time.time() and not self.credential_retry(old):raise Pending('Speech request cooldown',old['retry_epoch'])
   if old and old.get('fatal'):raise Attention(old.get('reason','Speech job rejected'))
-  attempt=0 if (old or {}).get('status')==429 else (old or {}).get('attempt',0)
+  attempt=0 if (old or {}).get('status')==429 or self.credential_retry(old) else (old or {}).get('attempt',0)
   if old and old.get('status')=='started_unknown' and attempt>=2:raise Attention('Repeated unknown speech outcome; recovery exhausted')
   if attempt>=3:
    if old.get('status') in {408,500,502,503,504}:
@@ -108,7 +112,7 @@ class Google:
     if time.time()<retry:raise Pending('Speech service hourly cooldown',retry)
     attempt=0
    else:raise Attention('Speech retry allowance exhausted')
-  ident=self.before(model);key=credentials('gemini',0);result=dict(signature=signature,config=config,status='started_unknown',started_epoch=time.time(),started_utc=utc(),attempt=attempt+1,reservation_id=ident,complete=False);save(receipt,result);self.checkpoint()
+  ident=self.before(model);key=self.key_getter();result=dict(signature=signature,config=config,status='started_unknown',started_epoch=time.time(),started_utc=utc(),attempt=attempt+1,reservation_id=ident,complete=False);result.update(getattr(self,'audit',{}));save(receipt,result);self.checkpoint()
   payload=dict(model=model,input=[dict(type='user_input',content=[dict(type='text',text=text,annotations=[dict(type='speech_metadata',style=config['style'])])])],response_format=dict(type='audio'),generation_config=dict(speech_config=[dict(voice='Charon')]))
   start=time.monotonic()
   try:

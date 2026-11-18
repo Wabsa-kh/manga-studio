@@ -2,7 +2,7 @@
 import argparse,os,time,traceback,shutil
 from pathlib import Path
 from .core import read,save,sha,digest,event,utc,units_for,choose_part,Pending,Attention,Singleton
-from .providers import Google
+from .routing import Router as Google
 from .stages import read_batch,write_unit
 from run import inventory
 
@@ -101,7 +101,7 @@ def turn(root,inv,api,config,text_only=False):
  return True
 
 def main():
- parser=argparse.ArgumentParser();parser.add_argument('--config',required=True);parser.add_argument('--once',action='store_true');parser.add_argument('--text-only',action='store_true');args=parser.parse_args();config=read(args.config);root,inv=initialize(config);api=Google(root,config.get('provider_state'))
+ parser=argparse.ArgumentParser();parser.add_argument('--config',required=True);parser.add_argument('--once',action='store_true');parser.add_argument('--text-only',action='store_true');args=parser.parse_args();config=read(args.config);root,inv=initialize(config);api=Google(root,config.get('provider_state'),config.get('providers'),quota_limits=config.get('quota_limits'))
  with Singleton(root/'worker.lock'):
   event(root,'worker_started',pid=os.getpid(),text_only=args.text_only);save(root/'worker.json',dict(pid=os.getpid(),started_utc=utc()))
   while not (root/'STOP').exists():

@@ -99,10 +99,15 @@ class Budget:
   with self.db() as db:row=db.execute('SELECT until_epoch,reason,permanent FROM holds WHERE model=?',(model,)).fetchone()
   if row and row[2]:raise Attention(row[1])
   if row and row[0]>time.time():raise Pending(row[1],row[0])
- def reserve(self,model,rpd,rpm):
+ def reserve(self,model,rpd,rpm,shared_prefix=None,shared_rpm=None,shared_daily=None):
   self.hold(model);now=time.time()
   with self.db() as db:
    db.execute('BEGIN IMMEDIATE');n=db.execute('SELECT count(*) FROM calls WHERE model=? AND day=?',(model,quota_day(now))).fetchone()[0]
+   if shared_prefix:
+    prefix=(len(shared_prefix),shared_prefix)
+    if shared_daily is not None and db.execute('SELECT count(*) FROM calls WHERE substr(model,1,?)=? AND day=?',(*prefix,quota_day(now))).fetchone()[0]>=shared_daily:raise Pending('Shared provider daily allowance reached',next_reset(now))
+    recent=db.execute('SELECT at FROM calls WHERE substr(model,1,?)=? AND at>? ORDER BY at',(*prefix,now-60)).fetchall()
+    if shared_rpm is not None and len(recent)>=shared_rpm:raise Pending('Shared provider request pacing',recent[0][0]+61)
    if n>=rpd:raise Pending('Local conservative daily request allowance reached for '+model,next_reset(now))
    starts=db.execute('SELECT at FROM calls WHERE model=? AND at>? ORDER BY at',(model,now-60)).fetchall()
    if len(starts)>=rpm:raise Pending('Request pacing for '+model,starts[0][0]+61)

@@ -1,8 +1,9 @@
 """Owner-only Google consent and stdin-based GitHub secret installation."""
 import argparse,json,os,subprocess,sys,configparser
 from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 REPO='Wabsa-kh/manga-studio'
-FILES={'GEMINI_API_KEY':'gemini-key.txt','MANGA_RCLONE_CONFIG':'rclone.conf','COLAB_ADC_JSON':'colab-adc.json','YOUTUBE_TOKEN_JSON':'youtube-token.json','YOUTUBE_CHANNEL_ID':'youtube-channel-id.txt'}
+FILES={'GEMINI_API_KEY':'gemini-key.txt','MANGA_RCLONE_CONFIG':'rclone.conf','COLAB_ADC_JSON':'colab-adc.json','YOUTUBE_TOKEN_JSON':'youtube-token.json','YOUTUBE_CHANNEL_ID':'youtube-channel-id.txt','MODEL_CREDENTIALS_JSON':'model-credentials.json'}
 
 def install(folder):
  for name,filename in FILES.items():
@@ -10,7 +11,16 @@ def install(folder):
   if not path.exists():print(name+': missing');continue
   value=path.read_text(encoding='utf-8-sig').strip()
   if not value or 'REPLACE_ME' in value:print(name+': placeholder; skipped');continue
-  if filename.endswith('.json'):
+  if name=='MODEL_CREDENTIALS_JSON':
+   records=json.loads(value).get('credentials')
+   if not isinstance(records,list) or not records:raise ValueError('Model credentials must be a nonempty list')
+   from manga_bot.credentials import load_credentials
+   previous=os.environ.get('MODEL_CREDENTIALS_JSON');os.environ['MODEL_CREDENTIALS_JSON']=value
+   try:load_credentials()
+   finally:
+    if previous is None:os.environ.pop('MODEL_CREDENTIALS_JSON',None)
+    else:os.environ['MODEL_CREDENTIALS_JSON']=previous
+  elif filename.endswith('.json'):
    data=json.loads(value)
    if not data.get('refresh_token') or data.get('type')!='authorized_user':raise ValueError(name+': authorized user refresh credentials required')
   if name=='MANGA_RCLONE_CONFIG':
