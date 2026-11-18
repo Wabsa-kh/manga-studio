@@ -75,6 +75,13 @@ class RoutingTests(unittest.TestCase):
    api=Router(d)
    for row in api.pool.rows:api.pool.reserve(row,'m',10,10);api.pool.observe(row,body)
    summary=api.budget.summary();self.assertEqual(len(summary),1);self.assertEqual(summary[0]['requests'],2);self.assertIn('123456789',summary[0]['model'])
+ def test_last_automatically_discovered_project_releases_shared_group(self):
+  with tempfile.TemporaryDirectory() as d,environment([credential('a',project='123456789'),credential('b')]):
+   api=Router(d)
+   for row in api.pool.rows:api.pool.reserve(row,'m',10,10)
+   api.pool.observe(api.pool.rows[1],json.dumps({'error':{'details':[{'@type':'type.googleapis.com/google.rpc.ErrorInfo','metadata':{'consumer':'projects/987654321'}}]}}))
+   self.assertEqual({r['model'] for r in api.budget.summary()},{'google|123456789|m','google|987654321|m'})
+   self.assertEqual(sum(r['requests'] for r in api.budget.summary()),2)
  def test_separate_projects_can_use_separate_budgets(self):
   with tempfile.TemporaryDirectory() as d,environment([credential('a',project='project-a'),credential('b',project='project-b')]),patch('requests.post',return_value=google()) as post:
    api=Router(d,options=routes(daily_requests=1));api.generate('reader','s',{'n':1},[],SCHEMA);api.generate('reader','s',{'n':2},[],SCHEMA);self.assertEqual(post.call_count,2)

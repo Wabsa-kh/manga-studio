@@ -61,8 +61,8 @@ class Pool:
  def identity(self,row):return row['id']+':'+digest(row['api_key'])[:16]
  def group(self,row):
   with self.budget.db() as db:known=dict(db.execute('SELECT credential,project FROM credential_scopes'))
-  if row['provider']=='google' and any(r['provider']=='google' and r['quota_group']=='unmapped' and self.identity(r) not in known for r in self.rows):return 'unmapped'
-  return known.get(self.identity(row),row['quota_group'])
+  if row['provider']=='google' and any(r['provider']=='google' and r['quota_group']=='unmapped' and not r.get('project_id') and self.identity(r) not in known for r in self.rows):return 'unmapped'
+  return known.get(self.identity(row),row.get('project_id') or row['quota_group'])
  def scope(self,row,model):return row['provider']+'|'+self.group(row)+'|'+model
  def observe(self,row,body):
   if row['provider']!='google':return
