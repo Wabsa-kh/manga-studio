@@ -147,7 +147,7 @@ class Router:
     try:
      result=client.tts(text,folder) if stage=='tts' else client.generate(stage,system,payload,pages,schema,max_tokens,thinking)
      if stage!='tts' and (not result.get('complete') or schema_errors(schema,result.get('output'))):incomplete=result;blocked.add(group);break
-     self.models[stage]=model;save(gate,dict(stage=stage,provider=provider,model=model,credential_id=result.get('credential_id',row['id']),quota_group=result.get('quota_group',row['quota_group']),completed=True));return result
+     self.models[stage]=model;save(gate,dict(stage=stage,provider=provider,model=model,credential_id=result.get('credential_id','cached-legacy-unattributed'),quota_group=result.get('quota_group','legacy-unattributed'),completed=True));return result
     except CredentialRejected as exc:waits.append(exc);continue
     except QuotaWait as exc:waits.append(exc);blocked.add(group);continue
     except ServiceWait as exc:waits.append(exc);break
