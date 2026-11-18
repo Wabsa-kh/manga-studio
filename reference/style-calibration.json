@@ -1,0 +1,49 @@
+{
+  "version": "reference-style-v6",
+  "basis": "Full Groq Whisper transcript and the timestamped visual study in reference/deep/ANALYSIS.md; user preferences override reference excesses.",
+  "reference_fragments": [
+    {
+      "window": "0:08–0:13",
+      "text": "His mother asked if he had found a job",
+      "lesson": "Recognizable subject, ordinary reporting verb, then the content of the question. Preserve the source-stated reason when it matters."
+    },
+    {
+      "window": "about 11:25–11:35",
+      "text": "He checked the time. It was 7am.",
+      "lesson": "A routine discovery can use two plain statements. No emotional interpretation is needed."
+    }
+  ],
+  "original_examples_not_source": [
+    {
+      "source": "A guard says the gate will stay closed until morning. A traveler asks to wait inside. The guard refuses.",
+      "overwritten": "Confronted by the guard's unyielding resolve, the weary traveler pleaded for shelter, only to meet a cold refusal.",
+      "preferred": "The guard said the gate would stay closed until morning. The traveler asked if he could wait inside, but the guard said no.",
+      "lesson": "Carry the exchange and condition. Do not infer resolve, weariness, pleading or coldness."
+    },
+    {
+      "source": "A person thinks a locked box might contain medicine. The contents are not shown.",
+      "overwritten": "Realizing the box held the medicine he needed, he understood that it was his only hope.",
+      "preferred": "He thought there might be medicine in the box.",
+      "lesson": "Keep a possibility attributed to its thinker. Do not supply contents, need or significance."
+    },
+    {
+      "source": "A woman sees a broken cup, frowns and asks who dropped it.",
+      "overwritten": "A frown crossed her face as frustration took hold, and she demanded to know who was responsible.",
+      "preferred": "She asked who had dropped the cup.",
+      "lesson": "The artwork can carry an incidental expression. Preserve the useful line without adding emotion."
+    },
+    {
+      "source": "A person is in a room. The next scene places him on a hillside without showing how.",
+      "overwritten": "A mysterious force carried him away, leaving him bewildered in an unfamiliar world.",
+      "preferred": "He was now on a hillside.",
+      "lesson": "Establish the observable change. Leave an unexplained mechanism unexplained."
+    },
+    {
+      "source": "A worker says the paint is still wet, so they cannot use that door yet. The worker says they can use the other door.",
+      "overwritten": "The wet paint taught them that patience was essential before they could move forward.",
+      "preferred": "The worker said the paint was still wet, so they couldn't use that door yet. They could use the other one.",
+      "lesson": "Keep an explanation supplied by the source, using its actual scope. Do not add a lesson or invent a completed choice."
+    }
+  ],
+  "instruction": "These are style demonstrations, not facts about the current manga. Never import their people, objects, events, numbers or wording as templates. Use the current evidence for all content. Refine style without deleting essential source meaning."
+}

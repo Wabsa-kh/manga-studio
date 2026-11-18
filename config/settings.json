@@ -1,0 +1,73 @@
+{
+  "state_root": "state",
+  "max_run_minutes": 240,
+  "part_minutes": [
+    45,
+    60
+  ],
+  "daily_target_minutes": [
+    60,
+    120
+  ],
+  "words_per_minute": 207,
+  "reader_batch_pages": 2,
+  "unit_pages": 40,
+  "prefetch_units": 2,
+  "tts_batch_words": 2200,
+  "part_audio_batching": true,
+  "minimum_free_gb": 4,
+  "storage": {
+    "backend": "rclone",
+    "remote_env": "MANGA_STORE_REMOTE"
+  },
+  "download": {
+    "provider": "weebcentral",
+    "chapter_limit_per_run": 0,
+    "threads": 2,
+    "delay_seconds": 1.5
+  },
+  "upscale": {
+    "enabled": true,
+    "backend": "colab",
+    "scale": 4,
+    "color_mode": "bw",
+    "gpu": "T4"
+  },
+  "providers": {
+    "reader": {
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "daily_requests": 440,
+      "rpm": 8
+    },
+    "writer": {
+      "provider": "google",
+      "model": "gemini-4-hydrogen",
+      "daily_requests": 18,
+      "rpm": 3
+    },
+    "tts": {
+      "provider": "google",
+      "model": "gemini-3.8-flash-tts",
+      "daily_requests": 9,
+      "rpm": 2
+    }
+  },
+  "render": {
+    "engine": "subpixel_v11",
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "zoom_relax": 0.94,
+    "move_seconds": 0.62,
+    "minimum_hold": 2.0,
+    "yaw_degrees": 0.65,
+    "transition_seconds": 0.28
+  },
+  "youtube": {
+    "enabled": true,
+    "privacy": "private",
+    "prepare_metadata": true,
+    "max_uploads_per_run": 1
+  }
+}

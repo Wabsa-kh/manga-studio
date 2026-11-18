@@ -1,0 +1,11 @@
+# Verification
+
+Run `python -m unittest test_manga_bot test_visual_v11 test_studio -v`.
+
+Tests cover ordered chapter grouping/decimal parts; part length with measured audio; JSON/source-reference guards; cached results and unknown-call recovery; Pacific daily reset/pacing; permanent access holds; real FFmpeg rendering and part assembly using synthetic sources; reversible evidence aliases; subpixel projection; transfer continuity and hold proportions; character focus and phrase timing; sampled paper color; deterministic seeking; interrupted checkpoint publishing; content/hash corruption; SQLite restore; Windows-to-Linux path relocation; partial chapter images; 4× output verification; and packed speech across units with prepared-audio reuse.
+
+Failure tests use controlled fake providers. They prove software behavior, not real provider uptime, billing entitlements, Colab login or factual story accuracy. The real Isekai visual pilot has 34 page shots and 102 sampled entry/middle/exit frames, no blank sampled frames, and a maximum middle-frame mean pixel difference of about 2.73 between encoded output and the expected original-image transform. A live 2,200-word Gemini speech request also completed: 649.12 seconds of audio in 125.3 seconds. Original receipts remain outside the repository; no manga-derived benchmark audio or credentials are committed.
+
+GitHub CI runs the regression suite on Linux without production secrets. A live cloud run remains gated on Drive/Colab credentials. After connecting them, start with one small manga/chapter sample and verify resume after an intentional stop before scaling the daily schedule. Do not treat a green unit-test run as a completed production qualification.
+
+A real downloader smoke test on 2026-11-18 fetched Isekai Kenkokuki Chapter 1 from WeebCentral: **19/19 pages decoded and verified in about 38.7 seconds**, with the 117-chapter source list detected. Only that chapter was downloaded for the smoke test. This is an actual network test on the local computer, not evidence that the website accepts every GitHub runner IP. The GitHub deployment dry run separately verified installation of ffmpeg, rclone and the Colab CLI and found the remaining Drive/Colab credentials missing, so no production model/GPU calls were dispatched.

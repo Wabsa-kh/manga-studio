@@ -1,0 +1,30 @@
+name: Pipeline checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: manga_bot/requirements.txt
+      - name: Install media runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python -m pip install -r manga_bot/requirements.txt
+      - name: Compile and scan source
+        run: |
+          python -m compileall -q manga_bot scripts
+          python scripts/check_secrets.py
+      - name: Failure, persistence and real render tests
+        run: python -m unittest test_manga_bot test_visual_v11 test_studio test_publishing -v
+
