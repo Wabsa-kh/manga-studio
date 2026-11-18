@@ -1,5 +1,17 @@
 # Verified status — 2026-11-18
 
+## Production qualification update — November 19 Pakistan time
+
+- Four WeebCentral titles are now queued for 45–60-minute private parts; see [selection notes](MANGA_SELECTION.md).
+- Real GitHub downloads encountered source HTTP 403. The owner requested Colab downloads. Downloads now use a separate Colab CPU session, followed by a GPU session for upscaling.
+- A real Colab CPU runtime allocated and the pinned downloader found 42 chapter entries for 7th Time Loop. Chapter 1's 45 original pages were downloaded, hash-verified and checkpointed to Drive. They were restored to a fresh Windows directory with the completion receipt intact. This qualifies one chapter, not the entire book or the GPU stage.
+- Drive hit request-rate exhaustion through rclone's shared OAuth app. Drive API access was enabled on the owner's existing OAuth app, fresh consent was completed against the existing archive, and the GitHub storage secret was updated. No archive was replaced.
+- Batched Drive upload/restore passed a real isolated round-trip (52.3 seconds), and the 51-file production checkpoint restored with integrity checks in 92.5 seconds. These are small samples, not a general sustained transfer benchmark. The temporary round-trip folder was removed after verification.
+- Checkpoints now batch new immutable blobs and retain publish-last manifests. GPU progress normally checkpoints every 16 verified pages or 60 seconds and flushes at completion, reducing per-page transfer overhead. Sudden VM loss can require repeating the latest uncheckpointed upscale batch.
+- The initial Colab download run was deliberately stopped after preserving the first chapter to deploy transfer batching. The [continuation run](https://github.com/Wabsa-kh/manga-studio/actions/runs/44387332650) resumes those saved pages. A produced hour-long video and a real private YouTube upload are still outstanding.
+
+## Earlier verification
+
 - Public source prepared from a clean snapshot; the original private history is retained separately.
 - GitHub Linux CI passed, including real synthetic media rendering, 30 fps modern assembly, persistence/failure tests and source-reference guards. See the repository Actions tab for exact commits/results.
 - Required authentication and the model-pool JSON are configured in six GitHub Secrets. Drive write/read validation passed; Colab OAuth runtime-list access returned HTTP 200; YouTube OAuth channel access and eligibility for uploads longer than 15 minutes were verified. The owner changed the OAuth app to In production, and fresh YouTube authorization was installed afterward. Upload privacy remains private.
