@@ -120,7 +120,17 @@ def http_error(pool,row,model,status,body,headers):
  if status==401:pool.reject(row);raise CredentialRejected('Credential rejected and quarantined',time.time()+3600)
  if status==429:
   daily=any(x in body.lower() for x in ('per_day','perday','per day','daily'))
+  headers=dict(headers)
+  try:
+   error=json.loads(body).get('error',{})
+   for name,value in error.get('metadata',{}).get('headers',{}).items():
+    if name.lower()=='retry-after' or name.lower().startswith('x-ratelimit'):headers.setdefault(name,str(value))
+   for detail in error.get('details',[]):
+    delay=re.fullmatch(r'([0-9.]+)s',detail.get('retryDelay','')) if detail.get('@type','').endswith('RetryInfo') else None
+    if delay and not any(k.lower()=='retry-after' for k in headers):headers['Retry-After']=delay[1]
+  except (ValueError,AttributeError,TypeError):pass
   until=retry_epoch(headers,default=max(60,next_reset()-time.time()) if daily else 60)
+  if daily and provider=='google':until=max(until,next_reset())
   pool.budget.set_hold(scope,'Observed provider quota cooldown',until)
   # OpenRouter documents global caps; do not retry its free pool using another key.
   if provider=='openrouter':pool.budget.set_hold('service|'+provider+'|'+model,'OpenRouter shared limit',until)

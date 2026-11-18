@@ -92,6 +92,13 @@ class RoutingTests(unittest.TestCase):
  def test_429_tries_another_verified_project(self):
   with tempfile.TemporaryDirectory() as d,environment([credential('a',project='project-a'),credential('b',project='project-b')]),patch('requests.post',side_effect=[Response(429,{'error':'daily quota'}),google()]) as post:
    api=Router(d,options=routes());self.assertTrue(api.generate('reader','s',{},[],SCHEMA)['complete']);self.assertEqual(post.call_count,2)
+ def test_google_retryinfo_is_honored(self):
+  from manga_bot.credentials import http_error,QuotaWait
+  body=json.dumps({'error':{'details':[{'@type':'type.googleapis.com/google.rpc.RetryInfo','retryDelay':'3s'}]}})
+  with tempfile.TemporaryDirectory() as d,environment([credential('a')]),patch('time.time',return_value=100):
+   api=Router(d)
+   with self.assertRaises(QuotaWait) as wait:http_error(api.pool,api.pool.rows[0],'m',429,body,{})
+   self.assertEqual(wait.exception.resume,103)
  def test_unknown_google_acceptance_does_not_rotate(self):
   with tempfile.TemporaryDirectory() as d,environment([credential('a'),credential('b')]),patch('requests.post',side_effect=requests.Timeout('fixture')) as post:
    api=Router(d,options=routes())
