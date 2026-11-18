@@ -17,6 +17,25 @@ class LocalStore:
   if not source.exists():return False
   Path(target).parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(source,target);return True
 
+class StorageFailure(Attention):
+ """Only an allowlisted category may enter public worker diagnostics."""
+ def __init__(self,code):
+  self.code=code
+  messages={
+   'storage_rate_limited':'Persistent storage is rate limited; saved checkpoints remain intact. Review Drive app quota and retry later.',
+   'storage_full':'Persistent storage is full; free space or connect more storage before continuing.',
+   'storage_authorization':'Persistent storage authorization needs renewal or permission review.',
+   'storage_timeout':'Persistent storage timed out; no generation dispatched before checkpoint acknowledgement.',
+   'storage_operation_failed':'Persistent storage operation failed; no API generation dispatched. Check rclone connection/space.'}
+  super().__init__(messages[code])
+
+def storage_failure(stderr):
+ text=stderr.decode('utf-8',errors='replace').lower() if isinstance(stderr,bytes) else str(stderr).lower()
+ if any(s in text for s in ('storagequotaexceeded','storage quota has been exceeded','no space left')):return StorageFailure('storage_full')
+ if any(s in text for s in ('ratelimitexceeded','rate limit exceeded','quota metric','too many requests','429')):return StorageFailure('storage_rate_limited')
+ if any(s in text for s in ('invalid_grant','unauthorized','insufficientpermissions','insufficient authentication scopes','access denied')):return StorageFailure('storage_authorization')
+ return StorageFailure('storage_operation_failed')
+
 class RcloneStore:
  def __init__(self,remote):
   if not remote or ':' not in remote:raise Attention('MANGA_STORE_REMOTE is not configured')
@@ -25,9 +44,10 @@ class RcloneStore:
    handle=tempfile.NamedTemporaryFile(prefix='manga-rclone-',suffix='.conf',delete=False);handle.write(os.environ['MANGA_RCLONE_CONFIG'].encode());handle.close();self.config=Path(handle.name);self.config.chmod(0o600)
   self.command(['mkdir',self.remote])
  def command(self,args):
-  cmd=['rclone',*( ['--config',str(self.config)] if self.config else []),*args,'--retries','3','--low-level-retries','3','--contimeout','30s','--timeout','2m']
-  r=subprocess.run(cmd,capture_output=True,timeout=600)
-  if r.returncode:raise Attention('Persistent storage operation failed; no API generation dispatched. Check rclone connection/space.')
+  cmd=['rclone',*( ['--config',str(self.config)] if self.config else []),*args,'--retries','3','--low-level-retries','3','--contimeout','30s','--timeout','2m','--tpslimit','2','--tpslimit-burst','1']
+  try:r=subprocess.run(cmd,capture_output=True,timeout=600)
+  except subprocess.TimeoutExpired:raise StorageFailure('storage_timeout') from None
+  if r.returncode:raise storage_failure(r.stderr)
  def put(self,source,name):self.command(['copyto',str(source),self.remote+'/'+key(name)])
  def get(self,name,target):
   Path(target).parent.mkdir(parents=True,exist_ok=True)

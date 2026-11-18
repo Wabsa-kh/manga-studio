@@ -20,5 +20,8 @@ else:
   try:
    with contextlib.redirect_stdout(log),contextlib.redirect_stderr(log):worker(cfg,os.environ.get('MANGA_URL') or None,os.environ.get('MANGA_RETRY_ID') or None)
    checks['state']='run_finished';output();print('Run finished. Detailed reports and receipts are in private Drive storage.')
-  except Exception:
-   checks['state']='stopped';output();print('Worker stopped. Check private saved job receipts and connections.');sys.exit(1)
+  except Exception as exc:
+   from manga_bot.storage import StorageFailure
+   checks['state']='stopped'
+   if isinstance(exc,StorageFailure):checks['failure_kind']=exc.code
+   output();print('Worker stopped. '+(str(exc) if isinstance(exc,StorageFailure) else 'Check private saved job receipts and connections.'));sys.exit(1)

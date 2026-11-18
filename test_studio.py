@@ -9,6 +9,28 @@ from manga_bot.manage import add,doctor
 from manga_bot.providers import Google,MODELS
 
 class StudioTests(unittest.TestCase):
+ def test_drive_quota_failure_is_actionable_without_exposing_private_output(self):
+  from manga_bot.storage import RcloneStore,StorageFailure
+  import subprocess
+  store=RcloneStore.__new__(RcloneStore);store.config=None
+  private=b'quota metric Queries; rateLimitExceeded; Bearer private-token-value; private-folder-id'
+  with patch('manga_bot.storage.subprocess.run',return_value=subprocess.CompletedProcess([],1,b'',private)):
+   with self.assertRaises(StorageFailure) as caught:store.command(['mkdir','gdrive:private-folder'])
+  self.assertEqual(caught.exception.code,'storage_rate_limited')
+  self.assertNotIn('private-token-value',str(caught.exception));self.assertNotIn('private-folder-id',str(caught.exception))
+ def test_drive_storage_full_is_not_confused_with_request_quota(self):
+  from manga_bot.storage import storage_failure
+  self.assertEqual(storage_failure(b'storageQuotaExceeded: storage quota has been exceeded').code,'storage_full')
+  self.assertEqual(storage_failure(b'invalid_grant: token revoked').code,'storage_authorization')
+  self.assertEqual(storage_failure(b'unknown upstream failure').code,'storage_operation_failed')
+ def test_drive_timeout_has_a_safe_retry_diagnostic(self):
+  from manga_bot.storage import RcloneStore,StorageFailure
+  import subprocess
+  store=RcloneStore.__new__(RcloneStore);store.config=None
+  with patch('manga_bot.storage.subprocess.run',side_effect=subprocess.TimeoutExpired(['private-command'],600)):
+   with self.assertRaises(StorageFailure) as caught:store.command(['mkdir','gdrive:private-folder'])
+  self.assertEqual(caught.exception.code,'storage_timeout')
+  self.assertNotIn('private-command',str(caught.exception))
  def test_link_validation_and_deduplication(self):
   with tempfile.TemporaryDirectory() as d:
    a=add(d,'https://weebcentral.com/series/ABC/My-Comic');b=add(d,'https://www.weebcentral.com/series/ABC/Other-Title');self.assertEqual(a,b);self.assertEqual(len(read(Path(d)/'library.json')['manga']),1)
