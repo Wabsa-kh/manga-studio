@@ -2,7 +2,7 @@
 
 A public-source, resumable manga production worker with private credentials and media storage. Give it a WeebCentral series link, keep the manga library and generated assets on Google Drive, and continue bounded work in GitHub Actions. The current visual engine produces 30 fps character/action-focused page cameras with fractional-pixel movement, short transfers, longer holds, sampled paper backgrounds, subtle perspective and feathered wipes/fades.
 
-**Current status:** software and failure tests are implemented; GitHub CI verifies Linux execution. Google Drive and Colab user credentials must be connected before live cloud production. A complete link → downloader → Colab GPU → story → hour-long video run has not yet been qualified. Private-first resumable YouTube uploading is implemented; owner OAuth authorization and a live upload still need verification. Daily output is a target, not a guaranteed free entitlement.
+**Current status:** 54 tests pass on GitHub Linux. Drive, Colab and YouTube user credentials are connected privately. The cloud worker successfully saved a Drive checkpoint; Colab runtime-list access and YouTube channel access were verified. A complete link → downloader → Colab GPU → story → hour-long video → private upload run has not yet been qualified. Daily output is a target, not a guaranteed free entitlement.
 
 ## Start here
 
