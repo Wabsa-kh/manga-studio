@@ -74,6 +74,8 @@ def worker(cfg,url=None,retry_id=None):
  try:
   with Singleton(root.parent/'manga-manager.lock'):
    snapshot.restore()
+   from .catalog import sync,ordered
+   sync(root,cfg)
    if url:add(root,url)
    library=read(root/'library.json',{'version':1,'manga':[]});deadline=time.time()+cfg.get('max_run_minutes',240)*60;cfg['_deadline']=deadline
    if retry_id:
@@ -83,9 +85,10 @@ def worker(cfg,url=None,retry_id=None):
     from .core import Budget
     with Budget(root/'provider-state/budget.sqlite').db() as db:db.execute("DELETE FROM holds WHERE permanent=1 AND reason LIKE '%authentication%'")
     save(root/'library.json',library)
-   for manga_id in [m['id'] for m in library['manga']]:
+   for manga_id in [m['id'] for m in ordered(library)]:
     item=next(m for m in library['manga'] if m['id']==manga_id)
     if time.time()>deadline:break
+    if not item.get('enabled',True):continue
     job=Path(item['directory'])/'job'
     if (job/'config.json').exists():
      from .publishing import publish
@@ -105,7 +108,7 @@ def worker(cfg,url=None,retry_id=None):
       if not item.get('upscale_complete'):raise Attention('Colab returned without a verified completion receipt')
      from .worker import initialize,turn,status
      from .providers import Google
-     jobcfg={**{k:v for k,v in cfg.items() if k!='_console_log'},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state')};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint);api.assets=snapshot;item['state']='producing'
+     jobcfg={**{k:v for k,v in cfg.items() if k!='_console_log'},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state'),'part_minutes':item.get('part_minutes',cfg.get('part_minutes',[45,60]))};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint);api.assets=snapshot;item['state']='producing'
      with Singleton(jobroot/'worker.lock'):
       while time.time()<deadline:
        progress=turn(jobroot,inventory,api,jobcfg)

@@ -6,6 +6,8 @@ A public-source, resumable manga production worker with private credentials and 
 
 ## Start here
 
+For a multi-manga queue, edit [config/manga.json](config/manga.json). Each entry can set its title, enabled status, priority and target video duration. See [the operating guide](docs/OPERATING.md) for examples, chapter-boundary decisions and current key-handling limits.
+
 1. Read [SETUP.md](docs/SETUP.md) and connect Drive and Colab once through GitHub secrets. Existing Gemini credentials can be stored privately as a repository secret.
 2. Open **Actions → Daily manga worker → Run workflow**. Paste a full `https://weebcentral.com/series/...` link. The default dry run checks connections without model/GPU requests. Turn dry run off for production after setup.
 3. Leave the link blank to continue the saved library. A daily run is scheduled at 08:17 UTC. Successful and waiting jobs publish a readable summary. Finished media and recoverable state belong on Drive; small diagnostic reports are GitHub artifacts.

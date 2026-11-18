@@ -24,8 +24,8 @@ def initialize(config):
 
 def status(root,api,state,**fields):
  inv=read(root/'inventory.json');drafts=list((root/'units').glob('*/draft.json'));videos=list((root/'units').glob('*/video.json'));parts=list((root/'parts').glob('*/complete.json'));pages=len(list((root/'pages').glob('*.json')))
- data=dict(updated_utc=utc(),state=state,total_pages=len(inv['pages']),pages_read=pages,total_units=len(inv['units']),units_written=len(drafts),units_rendered=len(videos),parts_complete=len(parts),part_minutes_target=[45,60],manual_story_corrections=0,manual_prose_edits=0,usage=api.budget.summary(),evaluation_only=True,**fields);save(root/'status.json',data)
- text=f"# {read(root/'config.json')['title']} unattended test\n\nState: {state}\n\nPages read: {pages}/{len(inv['pages'])}; units written: {len(drafts)}/{len(inv['units'])}; rendered: {len(videos)}; complete parts: {len(parts)}.\n\nTarget: 45–60 minutes per part. Story and prose edits by the operator: 0. Outputs are evaluation cuts, not publication approval.\n\n"
+ data=dict(updated_utc=utc(),state=state,total_pages=len(inv['pages']),pages_read=pages,total_units=len(inv['units']),units_written=len(drafts),units_rendered=len(videos),parts_complete=len(parts),part_minutes_target=read(root/'config.json').get('part_minutes',[45,60]),manual_story_corrections=0,manual_prose_edits=0,usage=api.budget.summary(),evaluation_only=True,**fields);save(root/'status.json',data)
+ text=f"# {read(root/'config.json')['title']} unattended test\n\nState: {state}\n\nPages read: {pages}/{len(inv['pages'])}; units written: {len(drafts)}/{len(inv['units'])}; rendered: {len(videos)}; complete parts: {len(parts)}.\n\nTarget: {data['part_minutes_target'][0]}-{data['part_minutes_target'][1]} minutes per part. Story and prose edits by the operator: 0. Outputs are evaluation cuts, not publication approval.\n\n"
  if fields.get('reason'):text+='Current condition: '+fields['reason']+'\n\n'
  for p in sorted(parts):
   r=read(p);text+=f"- [{p.parent.name}: {r['minutes']:.1f} minutes]({r['path']})\n"

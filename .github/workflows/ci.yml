@@ -27,5 +27,5 @@ jobs:
           python -m compileall -q manga_bot scripts
           python scripts/check_secrets.py
       - name: Failure, persistence and real render tests
-        run: python -m unittest test_manga_bot test_visual_v11 test_studio test_publishing -v
+        run: python -m unittest test_manga_bot test_visual_v11 test_studio test_publishing test_catalog -v
 
