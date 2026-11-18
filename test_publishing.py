@@ -58,4 +58,15 @@ class UploadTests(unittest.TestCase):
   cfg={'storage':{'backend':'local'},'upscale':{'enabled':False},'youtube':{'enabled':True}}
   with patch.dict('os.environ',{'GEMINI_API_KEY':'fixture'},clear=True),patch('shutil.which',return_value='fixture'):
    state=doctor(cfg);self.assertTrue(state['production_ready']);self.assertFalse(state['publishing_ready'])
+class InstallTests(unittest.TestCase):
+ def test_apt_download_metadata(self):
+  from scripts.install_media import download_list
+  result=download_list("Reading package lists...\n'https://archive.ubuntu.com/ubuntu/pool/pkg.deb' pkg.deb 123 MD5Sum:abc\n")
+  self.assertIn(' out=pkg.deb',result);self.assertIn(' dir=/var/cache/apt/archives',result)
+ def test_reject_download_path_traversal(self):
+  from scripts.install_media import download_list
+  with self.assertRaises(ValueError):download_list("'https://archive.ubuntu.com/pkg.deb' ../pkg.deb 123")
+ def test_unsupported_packages_are_not_installed(self):
+  from scripts.install_media import install
+  with self.assertRaises(ValueError):install(['unexpected'])
 if __name__=='__main__':unittest.main()
