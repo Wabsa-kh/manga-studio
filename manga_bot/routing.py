@@ -27,6 +27,7 @@ def schema_projection(value,schema,path='$',dropped=None):
 class ScopedGoogle(Google):
  def __init__(self,root,shared,options,checkpoint,pool,row):
   super().__init__(root,shared,options,checkpoint,key_getter=lambda:row['api_key']);self.pool=pool;self.row=row
+  self.strict_unknown=True
   self.audit={'provider':'google','credential_id':row['id'],'quota_group':pool.group(row),'scope_mapping':row['scope_mapping']}
  def before(self,model):return self.pool.reserve(self.row,model,*self.limits[model])
  def error(self,model,status,body,headers):http_error(self.pool,self.row,model,status,body,headers)
@@ -134,6 +135,9 @@ class Router:
  def run(self,stage,system=None,payload=None,pages=None,schema=None,max_tokens=24576,thinking=None,text=None,folder=None):
   pages=pages or [];waits=[];incomplete=None;blocked=set();logical=digest(dict(stage=stage,system=system,payload=payload,pages=[(p['page_id'],p['sha256']) for p in pages],schema=schema,text=text));gate=self.root/'routing'/(logical+'.json');prior=read(gate,{})
   if prior.get('content_rejected'):raise ContentRejected('Saved content rejection requires owner review')
+  if prior.get('unknown_accepted'):
+   if prior.get('retry_epoch',0)>time.time():raise Pending('Saved unknown request acceptance is cooling down',prior['retry_epoch'])
+   raise Attention('Unknown accepted request requires review before any key/provider replay')
   for route in self.plan(stage,pages):
    provider=route.get('provider','google');model=route['model']
    tried=set()
@@ -155,6 +159,9 @@ class Router:
      save(gate,{'content_rejected':True});self.checkpoint();raise
     except Attention as exc:
      if 'Content screening' in str(exc):save(gate,{'content_rejected':True});self.checkpoint()
+     raise
+    except Pending as exc:
+     if 'unknown' in exc.reason.lower():save(gate,dict(unknown_accepted=True,retry_epoch=exc.resume,provider=provider,model=model,credential_id=row['id']));self.checkpoint()
      raise
   if incomplete:return incomplete
   if waits:raise min(waits,key=lambda e:e.resume)

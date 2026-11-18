@@ -50,6 +50,7 @@ class Google:
     # not blindly replayed on restart; one bounded recovery is explicit policy.
     until=old['started_epoch']+3600
     if time.time()<until:raise Pending('Unknown accepted request cooling down; reservation retained',until)
+    if getattr(self,'strict_unknown',False):raise Attention('Unknown accepted request needs review before replay')
     if attempt>=2:raise Attention('Repeated unknown provider request; no further replay')
    if old.get('retry_epoch',0)>time.time() and not self.credential_retry(old):raise Pending(old.get('reason','Retry cooldown'),old['retry_epoch'])
    if attempt>=3:
@@ -104,6 +105,7 @@ class Google:
   if old and old.get('complete') and old.get('signature')==signature and audio.exists() and sha(audio)==old['audio_sha256']:return old
   if old and old.get('retry_epoch',0)>time.time() and not self.credential_retry(old):raise Pending('Speech request cooldown',old['retry_epoch'])
   if old and old.get('fatal'):raise Attention(old.get('reason','Speech job rejected'))
+  if old and old.get('status')=='started_unknown' and getattr(self,'strict_unknown',False):raise Attention('Unknown speech acceptance needs review before replay')
   attempt=0 if (old or {}).get('status')==429 or self.credential_retry(old) else (old or {}).get('attempt',0)
   if old and old.get('status')=='started_unknown' and attempt>=2:raise Attention('Repeated unknown speech outcome; recovery exhausted')
   if attempt>=3:

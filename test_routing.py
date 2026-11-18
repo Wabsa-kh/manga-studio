@@ -22,6 +22,14 @@ def credential(ident,provider='google',project=''):
 def environment(rows):return patch.dict('os.environ',{'MODEL_CREDENTIALS_JSON':json.dumps({'credentials':rows})})
 def routes(**changes):return {'reader':{'provider':'google','model':'fixture-model','daily_requests':100,'rpm':100,**changes}}
 class RoutingTests(unittest.TestCase):
+ def test_speech_rotates_keys_and_reuses_finished_audio(self):
+  import io,wave,base64
+  blob=io.BytesIO()
+  with wave.open(blob,'wb') as wav:wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(24000);wav.writeframes(b'\0\0'*2400)
+  response=Response(data={'steps':[{'type':'model_output','content':[{'type':'audio','data':base64.b64encode(blob.getvalue()).decode()}]}],'usage':{'total_tokens':3}})
+  with tempfile.TemporaryDirectory() as d,environment([credential('a'),credential('b')]),patch('requests.post',return_value=response) as post:
+   api=Router(d);self.assertTrue(api.tts('one',Path(d)/'one')['complete']);self.assertTrue(api.tts('two',Path(d)/'two')['complete'])
+   self.assertNotEqual(post.call_args_list[0].kwargs['headers'],post.call_args_list[1].kwargs['headers']);api.tts('one',Path(d)/'one');self.assertEqual(post.call_count,2)
  def test_short_pacing_waits_checkpoint_and_continue_same_run(self):
   from manga_bot.manage import short_wait
   from unittest.mock import Mock
@@ -103,6 +111,13 @@ class RoutingTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d,environment([credential('a'),credential('b')]),patch('requests.post',side_effect=requests.Timeout('fixture')) as post:
    api=Router(d,options=routes())
    with self.assertRaises(Pending):api.generate('reader','s',{},[],SCHEMA)
+   self.assertEqual(post.call_count,1)
+ def test_unknown_acceptance_remains_blocked_after_restart_and_route_change(self):
+  with tempfile.TemporaryDirectory() as d,environment([credential('a'),credential('n','nim')]),patch('requests.post',side_effect=requests.Timeout('fixture')) as post:
+   api=Router(d,options=routes())
+   with self.assertRaises(Pending):api.generate('reader','s',{},[],SCHEMA)
+   with patch('time.time',return_value=time.time()+4000):
+    with self.assertRaises(Attention):Router(d,options={'reader':{'provider':'nim','model':'fixture-vl'}}).generate('reader','s',{},[],SCHEMA)
    self.assertEqual(post.call_count,1)
  def test_known_service_failure_can_fall_back_to_nim(self):
   with tempfile.TemporaryDirectory() as d,environment([credential('a'),credential('n','nim')]),patch('requests.post',side_effect=[Response(503),chat()]) as post:
