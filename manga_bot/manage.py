@@ -32,7 +32,8 @@ def doctor(cfg):
   rows=load_credentials();checks['gemini_key_configured']=any(r['provider']=='google' for r in rows);checks['model_pool_credentials']=len(rows);checks['nim_configured']=any(r['provider']=='nim' for r in rows);checks['openrouter_configured']=any(r['provider']=='openrouter' for r in rows)
  checks['storage_ready']=cfg['storage']['backend']=='local' or checks['rclone'] and checks['remote_configured'] and checks['drive_credentials_configured']
  checks['publishing_ready']=checks['storage_ready'] and checks['youtube_enabled'] and bool(os.environ.get('YOUTUBE_TOKEN_JSON')) and bool(os.environ.get('YOUTUBE_CHANNEL_ID'))
- checks['production_ready']=checks['ffmpeg'] and checks['gemini_key_configured'] and checks['storage_ready'] and (not cfg['upscale']['enabled'] or checks['colab_cli'] and checks['colab_credentials_configured']);return checks
+ needs_colab=cfg['upscale']['enabled'] or cfg.get('download',{}).get('backend','worker')=='colab'
+ checks['production_ready']=checks['ffmpeg'] and checks['gemini_key_configured'] and checks['storage_ready'] and (not needs_colab or checks['colab_cli'] and checks['colab_credentials_configured']);return checks
 
 def upscale_handoff(snapshot,manga_id,cfg):
  from .colab_bridge import launch
@@ -102,13 +103,21 @@ def worker(cfg,url=None,retry_id=None):
     try:
      directory=Path(item['directory']);directory.mkdir(parents=True,exist_ok=True);item['state']='downloading';save(root/'library.json',library);snapshot.checkpoint()
      if not item.get('download_complete'):
-      item['download_complete']=download(root,item,cfg,snapshot.checkpoint)
+      if cfg.get('download',{}).get('backend','worker')=='colab':
+       item.update(state='waiting_download',reason='Download task exported to Colab CPU runtime');save(root/'library.json',library);snapshot.checkpoint()
+       storage_safe=False;library,failure=upscale_handoff(snapshot,item['id'],{**cfg,'_colab_stage':'download'});item=next(m for m in library['manga'] if m['id']==manga_id);storage_safe=True
+       if failure:raise failure
+       if item.get('state')=='needs_review':raise Attention(item.get('reason','Colab download needs review'))
+       if not item.get('download_complete'):raise Pending(item.get('reason','Colab download saved partial progress'),item.get('resume_epoch') or time.time()+3600)
+      else:item['download_complete']=download(root,item,cfg,snapshot.checkpoint)
       if not item['download_complete']:item.update(state='downloading',reason='More chapters remain; saved download receipts');continue
      if cfg['upscale']['enabled'] and not item.get('upscale_complete'):
       item.update(state='waiting_upscale',reason='GPU upscale task exported for Colab');save(directory/'upscale-task.json',dict(source=item['source'],target=str(directory/'upscaled'),state=str(root),mode=cfg['upscale'].get('color_mode','bw')));save(root/'library.json',library);snapshot.checkpoint()
       storage_safe=False;library,failure=upscale_handoff(snapshot,item['id'],cfg);item=next(m for m in library['manga'] if m['id']==manga_id);storage_safe=True
       if failure:raise failure
-      if not item.get('upscale_complete'):raise Attention('Colab returned without a verified completion receipt')
+      if not item.get('upscale_complete'):
+       if item.get('state')=='waiting':raise Pending(item.get('reason','Colab upscaling is waiting'),item.get('resume_epoch') or time.time()+3600)
+       raise Attention(item.get('reason','Colab returned without a verified completion receipt'))
      from .worker import initialize,turn,status
      from .routing import Router as Google
      jobcfg={**{k:v for k,v in cfg.items() if k!='_console_log'},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state'),'part_minutes':item.get('part_minutes',cfg.get('part_minutes',[45,60]))};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint,quota_limits=cfg.get('quota_limits'));api.assets=snapshot;item['state']='producing'

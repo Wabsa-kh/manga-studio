@@ -11,6 +11,7 @@ def check(path='config/settings.json'):
  if any(type(n) not in (int,float) for n in (low,high)) or not 1<=low<=high<=240:raise ValueError('Global part_minutes must be an ordered range between 1 and 240')
  if not 1<=cfg.get('max_run_minutes',240)<=300:raise ValueError('max_run_minutes must fit inside the cloud job timeout')
  if cfg['youtube'].get('privacy') not in ('private','unlisted','public'):raise ValueError('Invalid upload privacy')
+ if cfg.get('download',{}).get('backend','worker') not in ('worker','colab'):raise ValueError('Download backend must be worker or colab')
  with tempfile.TemporaryDirectory(prefix='manga-config-check-') as folder:
   # This command does not need credentials; the production workflow invokes it
   # before its secret-bearing step.

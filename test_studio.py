@@ -9,6 +9,67 @@ from manga_bot.manage import add,doctor
 from manga_bot.providers import Google,MODELS
 
 class StudioTests(unittest.TestCase):
+ def test_manager_uses_colab_download_and_can_continue_without_gpu_upscale(self):
+  from manga_bot.manage import worker
+  with tempfile.TemporaryDirectory() as d:
+   base=Path(d);root=base/'github';root.mkdir();store=LocalStore(base/'drive')
+   ident=add(root,'https://weebcentral.com/series/ABC','CPU manga');Snapshot(root,store).checkpoint()
+   def launched(manga_id,cfg):
+    self.assertEqual(cfg['_colab_stage'],'download')
+    remote=Snapshot(base/'colab',store);remote.restore();library=read(remote.root/'library.json');item=library['manga'][0]
+    source=Path(item['directory'])/'source/Chapter 1';source.mkdir(parents=True);Image.new('RGB',(20,30)).save(source/'001.png')
+    item.update(download_complete=True,source=str(source.parent),state='ready_for_story');save(remote.root/'library.json',library);remote.checkpoint()
+   cfg={'state_root':str(root),'storage':{'backend':'local'},'download':{'backend':'colab'},'upscale':{'enabled':False},'youtube':{'enabled':False},'max_run_minutes':1}
+   with patch.dict(os.environ,{'MANGA_LOCAL_ARCHIVE':str(base/'drive')}),patch('manga_bot.colab_bridge.launch',side_effect=launched),patch('manga_bot.manage.download',side_effect=AssertionError('GitHub must not download')),patch('manga_bot.worker.initialize',return_value=(root/'manga'/ident/'job',{})),patch('manga_bot.worker.turn',return_value=False),patch('manga_bot.routing.Router'):
+    worker(cfg)
+   result=read(root/'library.json')['manga'][0];self.assertEqual(result['state'],'complete');self.assertTrue(result['download_complete'])
+ def test_colab_download_checkpoints_pages_before_upscaling(self):
+  from manga_bot.colab_tasks import process
+  with tempfile.TemporaryDirectory() as d:
+   base=Path(d);root=base/'colab';root.mkdir();book=root/'manga/abc';book.mkdir(parents=True)
+   save(root/'library.json',{'manga':[{'id':'abc','directory':str(book),'url':'https://weebcentral.com/series/ABC'}]})
+   snap=Snapshot(root,LocalStore(base/'drive'))
+   def downloaded(state,item,cfg,checkpoint):
+    source=book/'source/Chapter 1';source.mkdir(parents=True);Image.new('RGB',(20,30)).save(source/'001.png')
+    item.update(source=str(book/'source'),downloaded_chapters=1,expected_chapters=1);checkpoint();return True
+   with patch('manga_bot.ingest.download',side_effect=downloaded),patch('manga_bot.upscale.run',side_effect=AssertionError('CPU downloads must not start GPU work')):
+    result=process(snap,'abc','download',{'download':{},'upscale':{'enabled':True}})
+   self.assertTrue(result['download_complete']);self.assertEqual(result['state'],'ready_for_upscale')
+   fresh=base/'github';Snapshot(fresh,LocalStore(base/'drive')).restore()
+   self.assertTrue((fresh/'manga/abc/source/Chapter 1/001.png').exists())
+   self.assertTrue(read(fresh/'library.json')['manga'][0]['download_complete'])
+ def test_colab_partial_download_resumes_without_claiming_complete(self):
+  from manga_bot.colab_tasks import process
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d)/'colab';root.mkdir();book=root/'manga/abc';book.mkdir(parents=True)
+   save(root/'library.json',{'manga':[{'id':'abc','directory':str(book)}]});snap=Snapshot(root,LocalStore(Path(d)/'drive'))
+   def partial(*args):save(book/'downloads/chapter1.json',{'complete':True});raise Pending('Source temporarily unavailable',time.time()+3600)
+   with patch('manga_bot.ingest.download',side_effect=partial):result=process(snap,'abc','download',{'download':{}})
+   self.assertEqual(result['state'],'waiting');self.assertFalse(result.get('download_complete',False))
+   restored=Path(d)/'new';Snapshot(restored,LocalStore(Path(d)/'drive')).restore()
+   self.assertTrue(read(restored/'manga/abc/downloads/chapter1.json')['complete'])
+ def test_colab_gpu_uses_configured_color_model_without_downloading_again(self):
+  from manga_bot.colab_tasks import process
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d)/'colab';root.mkdir();book=root/'manga/abc';book.mkdir(parents=True)
+   save(root/'library.json',{'manga':[{'id':'abc','directory':str(book),'download_complete':True,'source':str(book/'source')}]})
+   snap=Snapshot(root,LocalStore(Path(d)/'drive'))
+   with patch('manga_bot.ingest.download',side_effect=AssertionError('Do not repeat verified download')),patch('manga_bot.upscale.run') as upscale:
+    result=process(snap,'abc','upscale',{'upscale':{'color_mode':'color'}})
+   self.assertEqual(upscale.call_args.kwargs['mode'],'color');self.assertTrue(result['upscale_complete'])
+ def test_colab_cpu_launch_never_requests_gpu_or_ships_model_keys(self):
+  from manga_bot.colab_bridge import launch
+  import subprocess,json
+  captured=[]
+  def run(command,**kwargs):
+   captured.append(command)
+   if 'upload' in command and command[-1]=='/content/manga-private.json':
+    data=read(command[-2]);self.assertEqual(data['stage'],'download');self.assertNotIn('providers',data['settings']);self.assertNotIn('model-secret',json.dumps(data))
+   return subprocess.CompletedProcess(command,0,b'',b'')
+  with patch.dict(os.environ,{'COLAB_ADC_JSON':'{}','MANGA_RCLONE_CONFIG':'fixture-drive','MANGA_STORE_REMOTE':'gdrive:fixture','MODEL_CREDENTIALS_JSON':'model-secret'}),patch('manga_bot.colab_bridge.subprocess.run',side_effect=run):
+   launch('abc',{'_colab_stage':'download','download':{'backend':'colab'},'upscale':{'gpu':'T4'},'providers':{'private':'model-secret'}})
+  allocation=next(c for c in captured if 'new' in c);self.assertNotIn('--gpu',allocation)
+  self.assertTrue(any('stop' in c for c in captured))
  def test_drive_quota_failure_is_actionable_without_exposing_private_output(self):
   from manga_bot.storage import RcloneStore,StorageFailure
   import subprocess

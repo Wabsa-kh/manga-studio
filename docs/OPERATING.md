@@ -57,7 +57,9 @@ Current part-audio batching freezes membership before speech generation. Duratio
 
 # Complete workflow
 
-Restore Drive state → import manga-list changes → choose the first enabled eligible book → download and verify original pages → upscale through Colab → read original pages → write source-linked narration with prior story memory → freeze a video part → generate speech and timing → render focused page-camera video → assemble and verify the part → checkpoint it to Drive → upload privately to the configured YouTube channel.
+Restore Drive state → import manga-list changes → choose the first enabled eligible book → download and verify original pages in a Colab CPU runtime → save them to Drive → upscale in a Colab GPU runtime → read original pages → write source-linked narration with prior story memory → freeze a video part → generate speech and timing → render focused page-camera video → assemble and verify the part → checkpoint it to Drive → upload privately to the configured YouTube channel.
+
+`download.backend` is now `colab`. The pinned WeebCentral downloader runs inside Colab, not on GitHub. A CPU download session and a GPU upscale session are separate, so a blocked download does not reserve GPU time. Each verified chapter is checkpointed; interrupted downloads resume their receipts. GitHub restores Colab's newest checkpoint before continuing, including after a disconnect. Colab access to the source and GPU allocation still require live qualification. Set the backend to `worker` only to deliberately return downloads to the GitHub worker.
 
 The downloader currently completes the requested book's chapter list before the upscale/reading stage. Upscaling currently completes before production starts. These stages are not a streaming chapter-by-chapter upload system yet.
 

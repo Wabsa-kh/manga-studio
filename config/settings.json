@@ -23,6 +23,7 @@
     "remote_env": "MANGA_STORE_REMOTE"
   },
   "download": {
+    "backend": "colab",
     "provider": "weebcentral",
     "chapter_limit_per_run": 0,
     "threads": 2,
