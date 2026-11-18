@@ -1,3 +1,32 @@
 {
-  "manga": []
+  "manga": [
+    {
+      "title": "7th Time Loop",
+      "url": "https://weebcentral.com/series/01J76XYF7XJ01RJCYXCC2Q08QR",
+      "enabled": true,
+      "priority": 1,
+      "part_minutes": [45, 60]
+    },
+    {
+      "title": "Ascendance of a Bookworm - Part 1",
+      "url": "https://weebcentral.com/series/01J76XYBRCCN0R7BTJSW7HSVV7",
+      "enabled": true,
+      "priority": 2,
+      "part_minutes": [45, 60]
+    },
+    {
+      "title": "By the Grace of the Gods",
+      "url": "https://weebcentral.com/series/01J76XYCGFHRXH4BKGNVQQEJ3E",
+      "enabled": true,
+      "priority": 3,
+      "part_minutes": [45, 60]
+    },
+    {
+      "title": "Tearmoon Empire",
+      "url": "https://weebcentral.com/series/01J76XYD8SDDBGMH2JB4NV26KX",
+      "enabled": true,
+      "priority": 4,
+      "part_minutes": [45, 60]
+    }
+  ]
 }
