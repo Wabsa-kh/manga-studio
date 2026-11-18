@@ -47,6 +47,20 @@ jobs:
           python -m pip install --disable-pip-version-check --timeout 30 --retries 2 -r manga_bot/requirements.txt google-colab-cli
           timeout 30s colab exec --help
           python scripts/check_config.py
+      - name: Start downloader browser fallback
+        if: inputs.dry_run != true
+        timeout-minutes: 4
+        run: |
+          docker run -d --name manga-source-browser \
+            -p 127.0.0.1:8191:8191 --memory=1536m --cpus=1 \
+            -e LOG_LEVEL=warning -e LOG_HTML=false \
+            ghcr.io/flaresolverr/flaresolverr@sha256:c80ae007ce2ccdcd217a12426e4f039ef763ff90738c808d38810c3e59323767
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail --max-time 3 http://127.0.0.1:8191/ >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo 'Downloader browser service did not become ready.'
+          exit 1
       - name: Check configuration and process bounded work
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -56,6 +70,9 @@ jobs:
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         run: python scripts/github_worker.py
+      - name: Stop downloader browser fallback
+        if: always()
+        run: docker rm -f manga-source-browser >/dev/null 2>&1 || true
       - name: Keep public-safe connection report
         if: always()
         uses: actions/upload-artifact@v4
