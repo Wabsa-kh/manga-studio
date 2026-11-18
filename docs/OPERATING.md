@@ -67,6 +67,8 @@ Minute-level pacing and transient cooldowns of up to 120 seconds checkpoint and 
 
 The private Drive checkpoint contains library.json, dashboard.json, REPORT.md, usage snapshots, request receipts, scripts, speech and completed media. The public Actions report shows connection booleans and generic run state.
 
+New checkpoint blobs and restores use batched rclone transfers, with hashes verified before restored files are used. The latest checkpoint pointer is still published only after every referenced blob and the manifest are acknowledged. Upscaling verifies each output and normally checkpoints after 16 new pages or 60 seconds, then flushes at completion. A sudden runtime loss can require redoing the most recent uncheckpointed upscale batch; acknowledged source pages and completed parts remain reusable. These thresholds are configurable under `upscale.checkpoint_pages` and `upscale.checkpoint_seconds`.
+
 # Keys and models
 
 The production worker now rotates credentials through one encrypted GitHub secret, `MODEL_CREDENTIALS_JSON`. The local private file is `model-credentials.json` in the setup-private folder outside the repository. Existing keys have already been installed; you do not need to enter them again. A single `GEMINI_API_KEY` is still supported if no pool secret is supplied.

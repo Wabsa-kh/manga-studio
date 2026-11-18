@@ -9,6 +9,31 @@ from manga_bot.manage import add,doctor
 from manga_bot.providers import Google,MODELS
 
 class StudioTests(unittest.TestCase):
+ def test_bulk_checkpoint_failure_does_not_publish_incomplete_state(self):
+  class Bulk(LocalStore):
+   fail=False
+   def put_many(self,entries):
+    for index,(source,name) in enumerate(entries):
+     self.put(source,name)
+     if self.fail and index==0:raise Attention('Interrupted batch transfer')
+  with tempfile.TemporaryDirectory() as d:
+   base=Path(d);root=base/'worker';root.mkdir();save(root/'state.json',{'version':1});store=Bulk(base/'drive');snap=Snapshot(root,store);snap.checkpoint()
+   save(root/'state.json',{'version':2});(root/'new.png').write_bytes(b'new generated asset');store.fail=True
+   with self.assertRaises(Attention):snap.checkpoint()
+   fresh=base/'next';Snapshot(fresh,store).restore();self.assertEqual(read(fresh/'state.json')['version'],1);self.assertFalse((fresh/'new.png').exists())
+ def test_bulk_restore_verifies_hashes_and_relocates_source_paths(self):
+  class Bulk(LocalStore):
+   batches=0
+   def put_many(self,entries):
+    for source,name in entries:self.put(source,name)
+   def get_many(self,entries):
+    self.batches+=1
+    return all(self.get(name,target) for name,target in entries)
+  with tempfile.TemporaryDirectory() as d:
+   base=Path(d);root=base/'colab';root.mkdir();(root/'page.png').write_bytes(b'original source');save(root/'job.json',{'source':str(root/'page.png')});store=Bulk(base/'drive');manifest=Snapshot(root,store).checkpoint()
+   fresh=base/'github';Snapshot(fresh,store).restore();self.assertEqual(store.batches,1);self.assertEqual(Path(read(fresh/'job.json')['source']).resolve(),(fresh/'page.png').resolve())
+   row=next(r for r in manifest['files'] if r['path']=='page.png');h=row['sha256'];(base/'drive/objects'/h[:2]/h[2:]).write_bytes(b'corrupted remote asset')
+   with self.assertRaises(Attention):Snapshot(base/'bad',store).restore()
  def test_colab_allocation_failure_keeps_details_private_for_diagnosis(self):
   from manga_bot.colab_bridge import launch
   import subprocess

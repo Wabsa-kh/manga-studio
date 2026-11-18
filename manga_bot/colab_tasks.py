@@ -20,7 +20,8 @@ def process(snapshot,manga_id,stage,cfg):
    from .upscale import run
    if not item.get('download_complete'):raise Attention('Download must complete before GPU upscaling')
    target=directory/'upscaled';item['state']='upscaling';checkpoint()
-   run(item['source'],target,state,mode=cfg.get('upscale',{}).get('color_mode','bw'),checkpoint=checkpoint)
+   options=cfg.get('upscale',{})
+   run(item['source'],target,state,mode=options.get('color_mode','bw'),checkpoint=checkpoint,checkpoint_pages=options.get('checkpoint_pages',16),checkpoint_seconds=options.get('checkpoint_seconds',60))
    item.update(upscale_complete=True,upscaled_source=str(target),state='ready_for_story',reason='Verified 4x upscale complete',resume_epoch=0)
  except Pending as exc:item.update(state='waiting',reason=exc.reason,resume_epoch=exc.resume)
  except Attention as exc:item.update(state='needs_review',reason=str(exc))

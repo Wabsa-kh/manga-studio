@@ -1,5 +1,5 @@
 """Headless adapter for the user's Spladenly ESRGAN notebook models."""
-import argparse,subprocess,sys,shutil
+import argparse,subprocess,sys,shutil,time
 from pathlib import Path
 from PIL import Image
 from .core import read,save,sha,Attention
@@ -15,7 +15,7 @@ def verify(source,output,scale=4):
   return dict(source_sha256=sha(source),output_sha256=sha(output),size=list(got),scale=scale)
  except (OSError,ValueError):return None
 
-def run(source,target,state,mode='bw',checkpoint=lambda:None):
+def run(source,target,state,mode='bw',checkpoint=lambda:None,checkpoint_pages=16,checkpoint_seconds=60):
  import torch
  if not torch.cuda.is_available():raise Attention('GPU upscale requires a connected Colab GPU runtime; source images remain intact')
  repo=vendor(state,'esrgan');model=repo/'models'/MODELS[mode]
@@ -26,9 +26,11 @@ def run(source,target,state,mode='bw',checkpoint=lambda:None):
   if old and current==old:verified.add(str(page))
   elif out.exists():out.unlink()  # Invalid generated output only; source untouched.
  import importlib.util
+ persisted=len(verified);last_checkpoint=time.monotonic()
  sys.path.insert(0,str(repo));spec=importlib.util.spec_from_file_location('vendor_esrgan_upscale',repo/'upscale.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);original=module.Progress
  class DurableProgress(original):
   def advance(self,*args,**kwargs):
+   nonlocal persisted,last_checkpoint
    super().advance(*args,**kwargs);changed=False
    for page in pages:
     if str(page) in verified:continue
@@ -37,12 +39,14 @@ def run(source,target,state,mode='bw',checkpoint=lambda:None):
      metadata=verify(page,out)
      if not metadata:raise Attention('Upscaler output failed dimensions/hash validation')
      save(out.with_suffix('.upscale.json'),metadata);verified.add(str(page));changed=True
-   if changed:checkpoint();print('Verified upscaled pages:',len(verified),'/',len(pages),flush=True)
+   if changed and (len(verified)-persisted>=checkpoint_pages or time.monotonic()-last_checkpoint>=checkpoint_seconds):
+    checkpoint();persisted=len(verified);last_checkpoint=time.monotonic();print('Checkpointed upscaled pages:',persisted,'/',len(pages),flush=True)
  module.Progress=DurableProgress
  # Keep one model in GPU memory, retaining upstream recursive OOM splitting.
  # Per-page progress fires after output writes, when checkpointing is safe.
  module.Upscale(model=str(model),input=source,output=target,skip_existing=True,delete_input=False).run()
  if len(verified)!=len(pages):raise Attention('Upscale run ended with missing pages')
+ if len(verified)>persisted:checkpoint()
  return len(verified)
 
 if __name__=='__main__':

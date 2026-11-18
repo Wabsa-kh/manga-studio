@@ -1,11 +1,11 @@
 """Immutable blobs plus a publish-last manifest for restorable worker state."""
-import json,os,shutil,subprocess,tempfile,threading,time,sqlite3
+import json,os,shutil,subprocess,tempfile,threading,time,sqlite3,uuid
 from pathlib import Path,PurePosixPath
 from .core import save,read,sha,digest,Attention
 
 def key(value):
  p=PurePosixPath(value)
- if p.is_absolute() or '..' in p.parts or '\\' in value or ':' in value:raise ValueError('Unsafe storage key')
+ if p.is_absolute() or '..' in p.parts or '\\' in value or ':' in value or '\n' in value or '\r' in value:raise ValueError('Unsafe storage key')
  return p.as_posix()
 
 class LocalStore:
@@ -49,6 +49,22 @@ class RcloneStore:
   except subprocess.TimeoutExpired:raise StorageFailure('storage_timeout') from None
   if r.returncode:raise storage_failure(r.stderr)
  def put(self,source,name):self.command(['copyto',str(source),self.remote+'/'+key(name)])
+ def put_many(self,entries):
+  with tempfile.TemporaryDirectory(prefix='manga-bulk-put-') as folder:
+   root=Path(folder)
+   for source,name in entries:
+    target=root/key(name);target.parent.mkdir(parents=True,exist_ok=True)
+    try:os.link(source,target)
+    except OSError:shutil.copyfile(source,target)
+   self.command(['copy',str(root),self.remote,'--immutable','--fast-list','--transfers','4','--checkers','4'])
+ def get_many(self,entries):
+  with tempfile.TemporaryDirectory(prefix='manga-bulk-get-') as folder:
+   root=Path(folder);listing=root/'files.txt';listing.write_text(''.join(key(name)+'\n' for name,_ in entries),encoding='utf-8');staged=root/'data'
+   self.command(['copy',self.remote,str(staged),'--files-from-raw',str(listing),'--fast-list','--transfers','4','--checkers','4'])
+   if not all((staged/key(name)).is_file() for name,_ in entries):return False
+   for name,target in entries:
+    Path(target).parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(staged/key(name),target)
+   return True
  def get(self,name,target):
   Path(target).parent.mkdir(parents=True,exist_ok=True)
   try:self.command(['copyto',self.remote+'/'+key(name),str(target)]);return True
@@ -102,6 +118,7 @@ class Snapshot:
     finally:dest.close();source.close()
    files={name:self.entries[name] for name in self.retained if name in self.entries}
    with tempfile.TemporaryDirectory(prefix='manga-checkpoint-') as temp:
+    uploads={}
     for source in sorted(self.root.rglob('*')):
      rel=source.relative_to(self.root)
      if not source.is_file() or not eligible(rel):continue
@@ -110,10 +127,15 @@ class Snapshot:
      stat=source.stat();stamp=(stat.st_size,stat.st_mtime_ns);cached=self.file_cache.get(rel.as_posix())
      if cached and cached[0]==stamp and cached[1] in self.known:h=cached[1]
      else:
-      frozen=Path(temp)/'blob';shutil.copyfile(source,frozen);h=sha(frozen);name='objects/'+h[:2]+'/'+h[2:]
-      if h not in self.known:self.store.put(frozen,name);self.known.add(h)
+      frozen=Path(temp)/uuid.uuid4().hex;shutil.copyfile(source,frozen);h=sha(frozen);name='objects/'+h[:2]+'/'+h[2:]
+      if h not in self.known and h not in uploads:uploads[h]=(frozen,name)
       self.file_cache[rel.as_posix()]=(stamp,h)
      files[rel.as_posix()]=dict(path=rel.as_posix(),sha256=h,size=stat.st_size)
+    if uploads:
+     if hasattr(self.store,'put_many'):self.store.put_many(list(uploads.values()))
+     else:
+      for frozen,name in uploads.values():self.store.put(frozen,name)
+     self.known.update(uploads)
     manifest=dict(version=1,created=time.time(),root_hint=str(self.root),root_aliases=list({str(self.root),self.original_root}),files=list(files.values()));mp=Path(temp)/'manifest.json';save(mp,manifest);h=sha(mp);self.store.put(mp,'manifests/'+h+'.json');pointer=Path(temp)/'pointer.json';save(pointer,{'manifest_sha256':h})
     if self.last:
      previous=Path(temp)/'previous.json';save(previous,self.last);self.store.put(previous,'refs/previous.json')
@@ -126,6 +148,7 @@ class Snapshot:
    info=read(pointer);h=info['manifest_sha256'];mp=Path(temp)/'manifest.json';self.store.get('manifests/'+h+'.json',mp)
    if sha(mp)!=h:raise Attention('Checkpoint manifest checksum mismatch')
    manifest=read(mp);self.entries={row['path']:row for row in manifest['files']};self.retained=set()
+   downloads=[]
    for row in manifest['files']:
     rel=key(row['path']);target=(self.root/rel).resolve()
     if not target.is_relative_to(self.root) or not eligible(Path(rel)):raise Attention('Unsafe checkpoint path')
@@ -134,8 +157,16 @@ class Snapshot:
      if target.exists() and sha(target)!=row['sha256']:target.unlink()
      continue
     if target.exists() and sha(target)==row['sha256']:self.known.add(row['sha256']);continue
-    staged=Path(temp)/'download';blob='objects/'+row['sha256'][:2]+'/'+row['sha256'][2:]
-    if not self.store.get(blob,staged) or sha(staged)!=row['sha256']:raise Attention('Checkpoint blob missing/corrupt: '+rel)
+    staged=Path(temp)/row['sha256'];blob='objects/'+row['sha256'][:2]+'/'+row['sha256'][2:];downloads.append((row,target,staged,blob))
+   if downloads:
+    entries=list({blob:(blob,staged) for _,_,staged,blob in downloads}.values())
+    if hasattr(self.store,'get_many'):
+     if not self.store.get_many(entries):raise Attention('Checkpoint bulk restore has missing blobs')
+    else:
+     for blob,staged in entries:
+      if not self.store.get(blob,staged):raise Attention('Checkpoint blob missing: '+blob)
+   for row,target,staged,_ in downloads:
+    if sha(staged)!=row['sha256']:raise Attention('Checkpoint blob corrupt: '+row['path'])
     target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(staged,target);self.known.add(row['sha256'])
    # Only restore DB snapshots when a local DB is absent. A live local worker
    # must never have its current transactions overwritten by older state.

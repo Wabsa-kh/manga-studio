@@ -34,7 +34,9 @@
     "backend": "colab",
     "scale": 4,
     "color_mode": "bw",
-    "gpu": "T4"
+    "gpu": "T4",
+    "checkpoint_pages": 16,
+    "checkpoint_seconds": 60
   },
   "providers": {
     "reader": {

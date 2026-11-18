@@ -12,6 +12,9 @@ def check(path='config/settings.json'):
  if not 1<=cfg.get('max_run_minutes',240)<=300:raise ValueError('max_run_minutes must fit inside the cloud job timeout')
  if cfg['youtube'].get('privacy') not in ('private','unlisted','public'):raise ValueError('Invalid upload privacy')
  if cfg.get('download',{}).get('backend','worker') not in ('worker','colab'):raise ValueError('Download backend must be worker or colab')
+ for field,default in (('checkpoint_pages',16),('checkpoint_seconds',60)):
+  value=cfg.get('upscale',{}).get(field,default)
+  if type(value) is not int or value<=0:raise ValueError('Upscale '+field+' must be a positive integer')
  with tempfile.TemporaryDirectory(prefix='manga-config-check-') as folder:
   # This command does not need credentials; the production workflow invokes it
   # before its secret-bearing step.
