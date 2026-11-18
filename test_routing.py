@@ -35,6 +35,12 @@ class RoutingTests(unittest.TestCase):
   checkpoint=Mock()
   with patch('time.time',return_value=100),patch('time.sleep') as sleep:self.assertFalse(short_wait(Pending('daily quota',10000),{},20000,checkpoint))
   checkpoint.assert_not_called();sleep.assert_not_called()
+ def test_cooldown_elapsed_during_saving_does_not_stop_the_day(self):
+  from manga_bot.manage import short_wait
+  from unittest.mock import Mock
+  checkpoint=Mock()
+  with patch('time.time',return_value=100),patch('time.sleep') as sleep:self.assertTrue(short_wait(Pending('pacing already elapsed',99),{},1000,checkpoint))
+  checkpoint.assert_called_once();sleep.assert_not_called()
  def test_schema_projection_preserves_facts_and_invalid_values(self):
   from manga_bot.routing import schema_projection
   schema={'type':'object','properties':{'fact':{'type':'string','enum':['known']}},'required':['fact'],'additionalProperties':False}

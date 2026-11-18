@@ -149,7 +149,7 @@ def worker(cfg,url=None,retry_id=None):
 def short_wait(exc,cfg,deadline,checkpoint):
  """Minute-level pacing stays in this run; long quota resets return to schedule."""
  delay=exc.resume-time.time()
- if not 0<delay<=cfg.get('short_wait_seconds',120) or exc.resume>=deadline-60:return False
+ if delay>cfg.get('short_wait_seconds',120) or exc.resume>=deadline-60:return False
  checkpoint()
  while time.time()<exc.resume:time.sleep(min(15,max(.05,exc.resume-time.time())))
  return True
