@@ -2,7 +2,7 @@
 
 The source repository is public. Credentials and the manga/media archive remain private. Standard public GitHub-hosted Linux runners are free; Drive capacity, Google API quotas and Colab GPU access have their own limits. No paid fallback is enabled.
 
-The scheduled worker runs at **08:17 UTC / 13:17 Pakistan every day**. GitHub may delay scheduled jobs. It resumes saved work and attempts at most one completed upload per run. A daily finished hour is a target, not a guaranteed entitlement.
+The scheduled worker runs at **08:17 UTC / 13:17 Pakistan every day**. GitHub may delay scheduled jobs. Public-repository schedules can also be disabled after 60 days without repository activity; check the Actions schedule during normal project maintenance ([GitHub documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows)). It resumes saved work and attempts at most one completed upload per run. A daily finished hour is a target, not a guaranteed entitlement.
 
 ## Files and secrets
 
