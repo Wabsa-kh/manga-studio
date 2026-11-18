@@ -88,5 +88,5 @@ def publish(root,cfg,snapshot):
   except Pending as exc:
    prior=read(receipt,{});prior.update(reason=exc.reason,resume_epoch=exc.resume);save(receipt,prior);snapshot.checkpoint();break
   except Exception as exc:
-   prior=read(receipt,{});prior.update(reason=type(exc).__name__,resume_epoch=time.time()+3600);save(receipt,prior);snapshot.checkpoint();break
+   prior=read(receipt,{});prior.update(reason=str(exc) if isinstance(exc,Attention) else type(exc).__name__,resume_epoch=time.time()+3600);save(receipt,prior);snapshot.checkpoint();break
  queue(root)

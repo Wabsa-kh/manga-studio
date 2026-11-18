@@ -25,6 +25,7 @@ def youtube(folder):
  from google.auth.transport.requests import AuthorizedSession
  path=folder/'google-client.json'
  if not path.exists():raise ValueError('Download a Desktop app OAuth client as google-client.json into your private setup folder first')
+ if 'REPLACE_ME' in path.read_text():raise ValueError('Replace the template with the actual downloaded Desktop app OAuth client')
  scopes=['https://www.googleapis.com/auth/youtube.upload','https://www.googleapis.com/auth/youtube.readonly']
  credentials=InstalledAppFlow.from_client_secrets_file(str(path),scopes=scopes).run_local_server(port=0,access_type='offline',prompt='consent')
  if not credentials.refresh_token:raise ValueError('Google did not return an offline refresh credential')

@@ -64,6 +64,13 @@ def worker(cfg,url=None,retry_id=None):
  root=Path(cfg['state_root']);root.mkdir(parents=True,exist_ok=True);backend=cfg['storage']['backend']
  if backend=='local':snapshot=Snapshot(root,LocalStore(os.environ.get('MANGA_LOCAL_ARCHIVE',str(root.parent/'archive'))),lazy_upscale=True,lazy_media=True)
  else:snapshot=Snapshot(root,RcloneStore(os.environ.get(cfg['storage'].get('remote_env','MANGA_STORE_REMOTE'))),lazy_upscale=True,lazy_media=True)
+ if cfg.get('_console_log'):
+  original_checkpoint=snapshot.checkpoint
+  def checkpoint_with_console():
+   log=cfg['_console_log'];log.flush();position=log.tell();log.seek(0);content=log.read();log.seek(position)
+   folder=root/'diagnostics';folder.mkdir(parents=True,exist_ok=True);(folder/'latest-run.log').write_text(content[-1024*1024:],encoding='utf-8')
+   return original_checkpoint()
+  snapshot.checkpoint=checkpoint_with_console
  try:
   with Singleton(root.parent/'manga-manager.lock'):
    snapshot.restore()
@@ -98,7 +105,7 @@ def worker(cfg,url=None,retry_id=None):
       if not item.get('upscale_complete'):raise Attention('Colab returned without a verified completion receipt')
      from .worker import initialize,turn,status
      from .providers import Google
-     jobcfg={**cfg,'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state')};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint);api.assets=snapshot;item['state']='producing'
+     jobcfg={**{k:v for k,v in cfg.items() if k!='_console_log'},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state')};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint);api.assets=snapshot;item['state']='producing'
      with Singleton(jobroot/'worker.lock'):
       while time.time()<deadline:
        progress=turn(jobroot,inventory,api,jobcfg)

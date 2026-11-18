@@ -41,4 +41,21 @@ class UploadTests(unittest.TestCase):
    v,p=self.fixture(d);save(p,dict(sha256=v['sha256'],channel='expected',privacy='private',state='initiating_unknown'));c=self.client()
    with self.assertRaises(Attention):upload(v,p,'expected',lambda:None,c)
    c.post.assert_not_called()
+ def test_queued_upload_does_not_need_credentials(self):
+  from unittest.mock import patch
+  from manga_bot.publishing import publish
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);save(root/'config.json',{'title':'Example','youtube':{'privacy':'private'}})
+   with patch.dict('os.environ',{},clear=True):publish(root,{'youtube':{'enabled':True}},Mock())
+   self.assertEqual(read(root/'upload-queue.json')['videos'],[])
+ def test_public_workflow_excludes_library_artifacts(self):
+  source=(Path(__file__).parent/'.github/workflows/production.yml').read_text(encoding='utf-8-sig')
+  self.assertNotIn('state/REPORT.md',source);self.assertNotIn('state/dashboard.json',source)
+  self.assertIn("github.ref == 'refs/heads/main'",source);self.assertNotIn('pull_request_target',source)
+ def test_publishing_does_not_block_production_when_oauth_missing(self):
+  from manga_bot.manage import doctor
+  from unittest.mock import patch
+  cfg={'storage':{'backend':'local'},'upscale':{'enabled':False},'youtube':{'enabled':True}}
+  with patch.dict('os.environ',{'GEMINI_API_KEY':'fixture'},clear=True),patch('shutil.which',return_value='fixture'):
+   state=doctor(cfg);self.assertTrue(state['production_ready']);self.assertFalse(state['publishing_ready'])
 if __name__=='__main__':unittest.main()

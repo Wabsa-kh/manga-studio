@@ -16,6 +16,7 @@ else:
  # Keep even unexpected upstream console output out of public runner logs.
  import tempfile
  with tempfile.TemporaryFile(mode='w+',encoding='utf-8') as log:
+  cfg['_console_log']=log
   try:
    with contextlib.redirect_stdout(log),contextlib.redirect_stderr(log):worker(cfg,os.environ.get('MANGA_URL') or None,os.environ.get('MANGA_RETRY_ID') or None)
    checks['state']='run_finished';output();print('Run finished. Detailed reports and receipts are in private Drive storage.')

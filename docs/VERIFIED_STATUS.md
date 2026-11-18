@@ -10,4 +10,4 @@
 
 Not yet verified: authenticated Drive checkpoint/restore on the actual account, Colab user authentication and GPU upscaling, a complete hour-long cloud run, factual/style quality across the full book, long-term free Actions/Colab capacity, storage retention/garbage collection and YouTube upload/OAuth. These must be resolved before claiming unattended daily publishing.
 
-Deployment update: 48 local tests pass, including resumable YouTube upload failures and duplicate prevention. Actual Google authorizations and a real upload remain unverified.
+Deployment update: 51 local tests pass, including resumable YouTube upload failures and duplicate prevention. Actual Google authorizations and a real upload remain unverified.
