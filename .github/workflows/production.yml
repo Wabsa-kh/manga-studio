@@ -56,6 +56,12 @@ jobs:
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         run: python scripts/github_worker.py
+      - name: Release managed Colab sessions after success or cancellation
+        if: always()
+        timeout-minutes: 5
+        env:
+          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+        run: python scripts/cleanup_colab.py
       - name: Keep public-safe connection report
         if: always()
         uses: actions/upload-artifact@v4

@@ -9,6 +9,21 @@ from manga_bot.manage import add,doctor
 from manga_bot.providers import Google,MODELS
 
 class StudioTests(unittest.TestCase):
+ def test_colab_cleanup_releases_only_this_runners_manga_sessions(self):
+  from scripts.cleanup_colab import cleanup
+  import subprocess
+  with tempfile.TemporaryDirectory() as d:
+   config=Path(d)/'sessions.json';save(config,{'manga-download-012345abcdef':{},'manga-upscale-abcdef012345':{},'personal-notebook':{}})
+   with patch('scripts.cleanup_colab.subprocess.run',return_value=subprocess.CompletedProcess([],0,b'',b'')) as stopped:
+    result=cleanup(config,'{}')
+   self.assertEqual(result,{'stopped':2,'failed':0});self.assertTrue(all(c.args[0][-1]!='personal-notebook' for c in stopped.call_args_list))
+ def test_colab_cleanup_reports_unresolved_runtime_without_deleting_metadata(self):
+  from scripts.cleanup_colab import cleanup
+  import subprocess
+  with tempfile.TemporaryDirectory() as d:
+   config=Path(d)/'sessions.json';save(config,{'manga-download-012345abcdef':{}})
+   with patch('scripts.cleanup_colab.subprocess.run',side_effect=subprocess.TimeoutExpired([],60)):result=cleanup(config,'{}')
+   self.assertEqual(result,{'stopped':0,'failed':1});self.assertIn('manga-download-012345abcdef',read(config))
  def test_bulk_checkpoint_failure_does_not_publish_incomplete_state(self):
   class Bulk(LocalStore):
    fail=False
