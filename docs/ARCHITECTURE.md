@@ -1,9 +1,10 @@
 # Modules and state
 
 - `manage`: manga library, bounded runs, per-title states and diagnostic report.
+- `catalog`: owner-editable manga list, priorities, pause/resume and per-book part durations.
 - `ingest`: URL validation, pinned downloader, complete-chapter receipts.
 - `upscale` / `colab_bridge`: pinned ESRGAN models, verified 4× dimensions, per-page Drive checkpoint and Colab lifecycle.
-- `providers` / `core.Budget`: provider/model routing, conservative durable reservations, observed holds and cooldowns. Current validated adapter is Google; unsupported configured providers fail explicitly.
+- `providers` / `routing` / `credentials` / `core.Budget`: native Google plus fixed-host NIM and free-only OpenRouter adapters, persistent credential selection, shared/project-scoped usage, observed scope merging, key quarantine, typed cooldowns and writer fallbacks. Unknown acceptance and content rejection remain held across route changes. Short pacing waits continue inside a bounded worker run.
 - `stages`: original-image evidence, source IDs, stronger writer, character memory and unresolved story handoffs.
 - `worker` / `part_audio`: source-order production, part decisions, frozen scope, speech packing across units and measured splitting.
 - `visual_layout` / `focus_timing`: separate subject geometry and exact narration-phrase timing. They do not rewrite story prose.
@@ -16,4 +17,4 @@ Generated outputs and credentials never belong in git. Model secrets live in env
 
 Content or identity uncertainty is review metadata. Schema/reference checks are not proof that the story is factually perfect. Content screening failures require review; the system does not change prompts/images or switch providers to evade screening. Source text is treated as untrusted story material, never as commands.
 
-The original Spladenly notebook uses an interactive Drive mount. The headless adapter uses the same pinned ESRGAN implementation/models, with rclone for authenticated handoff and validation after each page. Whole-book initial downloads and upscaling can require multiple bounded runs before the first finished video. Incremental per-part upscaling, storage garbage collection and a broader model registry remain useful next improvements after the first authenticated end-to-end qualification.
+The original Spladenly notebook uses an interactive Drive mount. The headless adapter uses the same pinned ESRGAN implementation/models, with rclone for authenticated handoff and validation after each page. Whole-book initial downloads and upscaling can require multiple bounded runs before the first finished video. Incremental per-part upscaling, explicit storage retention and full-book provider qualification remain useful next improvements. Route profiles and their measured limits are documented in provider-profiles.json and PROVIDER_VERIFICATION.md.

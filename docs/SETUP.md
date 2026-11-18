@@ -15,8 +15,11 @@ Keep these files in a private folder OUTSIDE the repository. The setup helper in
 | colab-adc.json | COLAB_ADC_JSON | Authorized user Colab credentials |
 | youtube-token.json | YOUTUBE_TOKEN_JSON | YouTube offline OAuth credentials |
 | youtube-channel-id.txt | YOUTUBE_CHANNEL_ID | Intended upload channel |
+| model-credentials.json | MODEL_CREDENTIALS_JSON | Google/NIM/OpenRouter credential pool |
 
 Repository variable `MANGA_STORE_REMOTE` is `gdrive:manga-studio`.
+
+The owner's model pool is already installed. Project IDs are optional; no manual project lookup is required. Its Google account labels follow the owner's statement that the credentials are from separate accounts. Actual quota metadata can merge shared scopes. The pool rotates valid keys, quarantines rejected ones and does not treat extra OpenRouter keys as extra entitlement. See [OPERATING.md](OPERATING.md) for routing and quota behaviour.
 
 ## 1. Drive
 
