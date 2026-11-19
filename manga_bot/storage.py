@@ -84,9 +84,10 @@ def eligible(path):
  return not any(p.lower() in forbidden for p in path.parts) and not any(x in path.name.lower() for x in ['.tmp','.partial','.lock','.sqlite','credentials','token','keys.txt','.env'])
 
 class Snapshot:
- def __init__(self,root,store,lazy_upscale=False,lazy_media=False,lazy_source=False):self.original_root=str(Path(root).absolute());self.root=Path(root).resolve();self.store=store;self.lock=threading.Lock();self.known=set();self.last=None;self.file_cache={};self.entries={};self.retained=set();self.lazy_upscale=lazy_upscale;self.lazy_media=lazy_media;self.lazy_source=lazy_source
+ def __init__(self,root,store,lazy_upscale=False,lazy_media=False,lazy_source=False):self.original_root=str(Path(root).absolute());self.root=Path(root).resolve();self.store=store;self.lock=threading.Lock();self.known=set();self.last=None;self.file_cache={};self.entries={};self.retained=set();self.lazy_upscale=lazy_upscale;self.lazy_media=lazy_media;self.lazy_source=lazy_source;self.active_images=()
  def lazy(self,path):
   path=Path(path)
+  if any(path.is_relative_to(prefix) for prefix in self.active_images):return False
   return (self.lazy_source or self.lazy_upscale and 'upscaled' in path.parts) and path.suffix.lower() in {'.png','.jpg','.jpeg','.webp'} or self.lazy_media and path.suffix.lower() in {'.mp4','.wav','.flac','.ogg'}
  def ensure_path(self,path,missing_ok=False):
   path=Path(path).resolve()

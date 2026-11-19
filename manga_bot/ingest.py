@@ -44,6 +44,11 @@ def download(root,job,settings,checkpoint=lambda:None):
   if not dest.resolve().is_relative_to(source.resolve()):raise Attention('Downloader produced unsafe chapter path')
   receipt=Path(job['directory'])/'downloads'/(digest(chapter['url'])+'.json');old=read(receipt)
   if old and old.get('complete'):
+   files=old['files'];expected=old['expected_pages'];saved=settings.get('_saved_files',{})
+   if expected>0 and len(files)==expected and all(
+    Path(f['path']).stem==f'{n:03}' and Path(f['path']).name==f['path'] and Path(f['path']).suffix.lower() in {'.png','.webp','.jpg','.jpeg'} and
+    saved.get((dest/f['path']).relative_to(root).as_posix(),{}).get('sha256')==f['sha256'] for n,f in enumerate(files,1)):
+    completed+=1;continue
    current=verified_images(dest,old['expected_pages'])
    if current==old['files']:completed+=1;continue
   urls=scraper.get_chapter_images(chapter['url'])

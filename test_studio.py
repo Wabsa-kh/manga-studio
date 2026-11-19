@@ -24,6 +24,22 @@ class StudioTests(unittest.TestCase):
    config=Path(d)/'sessions.json';save(config,{'manga-download-012345abcdef':{}})
    with patch('scripts.cleanup_colab.subprocess.run',side_effect=subprocess.TimeoutExpired([],60)):result=cleanup(config,'{}')
    self.assertEqual(result,{'stopped':0,'failed':1});self.assertIn('manga-download-012345abcdef',read(config))
+ def test_cleanup_accepts_a_missing_runtime_but_still_reports_permission_errors(self):
+  from scripts.cleanup_colab import cleanup
+  import subprocess
+  with tempfile.TemporaryDirectory() as d:
+   config=Path(d)/'sessions.json';save(config,{'manga-download-012345abcdef':{}})
+   for error,count in [(b'GET https://colab.research.google.com/tun/m/unassign/vm: Not \nFound',0),(b'GET https://colab.research.google.com/tun/m/unassign/vm: Forbidden',1)]:
+    with patch('scripts.cleanup_colab.subprocess.run',return_value=subprocess.CompletedProcess([],1,b'',error)):
+     self.assertEqual(cleanup(config,'{}')['failed'],count)
+ def test_lazy_download_restore_preserves_page_until_needed_for_production(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d)/'cpu';store=LocalStore(Path(d)/'drive');source=Path('manga/a/source/one.png')
+   (root/source).parent.mkdir(parents=True);(root/source).write_bytes(b'page');Snapshot(root,store).checkpoint()
+   github=Snapshot(Path(d)/'github',store,lazy_source=True);github.restore()
+   self.assertFalse((github.root/source).exists());github.checkpoint()
+   github.active_images=(source.parent,);github.restore()
+   self.assertEqual((github.root/source).read_bytes(),b'page')
  def test_bulk_checkpoint_failure_does_not_publish_incomplete_state(self):
   class Bulk(LocalStore):
    fail=False

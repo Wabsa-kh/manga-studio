@@ -20,7 +20,7 @@ def launch(manga_id,settings):
     output=(result.stdout+b'\n'+result.stderr).decode('utf-8',errors='replace')[-12000:]
     if settings.get('state_root'):
      save(Path(settings['state_root'])/'diagnostics'/('colab-'+manga_id+'-'+args[0]+'.json'),dict(operation=args[0],stage=stage,exit_code=result.returncode,private_output=output))
-    temporary=('429','503','resource_exhausted','too many requests','temporarily unavailable','connection reset','no available gpu','timed out')
+    temporary=('429','503','resource_exhausted','too many requests','temporarily unavailable','connection reset','connection was lost','no available gpu','timed out')
     if any(marker in output.lower() for marker in temporary):
      raise Pending('Colab '+stage+' temporarily unavailable; retry from the saved checkpoint',time.time()+900)
     raise Attention('Colab '+stage+' operation failed; inspect the private Drive diagnostics for runtime/authentication details')

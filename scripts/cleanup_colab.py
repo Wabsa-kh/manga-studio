@@ -17,7 +17,9 @@ def cleanup(path=None,credentials=None):
   for name in names:
    try:
     stopped=subprocess.run(['colab','--auth','adc','stop','-s',name],env=env,capture_output=True,timeout=60)
-    result['stopped' if stopped.returncode==0 else 'failed']+=1
+    message=' '.join((stopped.stdout+b' '+stopped.stderr).decode(errors='replace').lower().split())
+    absent='/tun/m/unassign/' in message and message.endswith('not found')
+    result['stopped' if stopped.returncode==0 or absent else 'failed']+=1
    except subprocess.TimeoutExpired:result['failed']+=1
  return result
 

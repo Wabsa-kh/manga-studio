@@ -68,6 +68,7 @@ def worker(cfg,url=None,retry_id=None):
  root=Path(cfg['state_root']);root.mkdir(parents=True,exist_ok=True);backend=cfg['storage']['backend']
  if backend=='local':snapshot=Snapshot(root,LocalStore(os.environ.get('MANGA_LOCAL_ARCHIVE',str(root.parent/'archive'))),lazy_upscale=True,lazy_media=True)
  else:snapshot=Snapshot(root,RcloneStore(os.environ.get(cfg['storage'].get('remote_env','MANGA_STORE_REMOTE'))),lazy_upscale=True,lazy_media=True)
+ snapshot.lazy_source=cfg.get('download',{}).get('backend')=='colab'
  if cfg.get('_console_log'):
   original_checkpoint=snapshot.checkpoint
   def checkpoint_with_console():
@@ -118,6 +119,9 @@ def worker(cfg,url=None,retry_id=None):
       if not item.get('upscale_complete'):
        if item.get('state')=='waiting':raise Pending(item.get('reason','Colab upscaling is waiting'),item.get('resume_epoch') or time.time()+3600)
        raise Attention(item.get('reason','Colab returned without a verified completion receipt'))
+     if snapshot.lazy_source:
+      snapshot.active_images=(Path('manga')/manga_id/'source',)
+      snapshot.restore()
      from .worker import initialize,turn,status
      from .routing import Router as Google
      jobcfg={**{k:v for k,v in cfg.items() if k!='_console_log'},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state'),'part_minutes':item.get('part_minutes',cfg.get('part_minutes',[45,60]))};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint,quota_limits=cfg.get('quota_limits'));api.assets=snapshot;item['state']='producing'

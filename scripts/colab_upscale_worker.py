@@ -14,7 +14,8 @@ def main():
  subprocess.run(['apt-get','update','-qq'],check=True);subprocess.run(['apt-get','install','-y','-qq','rclone'],check=True)
  from manga_bot.storage import Snapshot,RcloneStore
  from manga_bot.colab_tasks import process
- state=root/'state';store=RcloneStore(connection['remote']);snapshot=Snapshot(state,store,lazy_media=True)
+ state=root/'state';store=RcloneStore(connection['remote']);snapshot=Snapshot(state,store,lazy_media=True,lazy_source=True)
+ if stage=='upscale':snapshot.active_images=tuple(Path('manga')/connection['manga_id']/name for name in ('source','upscaled'))
  try:
   if not snapshot.restore():raise RuntimeError('No persisted manga task found')
   logs=state/'diagnostics';logs.mkdir(parents=True,exist_ok=True)

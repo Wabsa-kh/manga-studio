@@ -13,7 +13,7 @@ def process(snapshot,manga_id,stage,cfg):
    from .ingest import download
    if not item.get('download_complete'):
     item.update(state='colab_downloading',reason='Downloading and verifying original pages inside Colab');checkpoint()
-    item['download_complete']=download(state,item,cfg,checkpoint)
+    item['download_complete']=download(state,item,{**cfg,'_saved_files':snapshot.entries},checkpoint)
     if not item['download_complete']:raise Pending('More chapters remain; Colab download receipts preserved',time.time()+60)
    item.update(state='ready_for_upscale' if cfg.get('upscale',{}).get('enabled') else 'ready_for_story',reason='Original pages downloaded and verified in Colab',resume_epoch=0)
   else:
