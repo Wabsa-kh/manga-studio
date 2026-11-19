@@ -115,7 +115,16 @@ def worker(cfg,url=None,retry_id=None):
     save(root/'library.json',library)
    from collections import deque
    queue_ids=deque(m['id'] for m in ordered(library))
-   while queue_ids:
+   deferred={}
+   while queue_ids or deferred:
+    if not queue_ids:
+     now=time.time()
+     manga_id=min(deferred,key=deferred.get)
+     resume=deferred.pop(manga_id)
+     if not wait_for_resume({'resume_epoch':resume},cfg,deadline):break
+     queue_ids.append(manga_id)
+     for ready,wake in list(deferred.items()):
+      if wake<=now:queue_ids.append(ready);del deferred[ready]
     manga_id=queue_ids.popleft()
     item=next(m for m in library['manga'] if m['id']==manga_id)
     if time.time()>deadline:break
@@ -127,7 +136,8 @@ def worker(cfg,url=None,retry_id=None):
     if cfg.get('_publish_only'):continue
     if item['state'] in ['complete','needs_review']:continue
     if item.get('resume_epoch',0)>time.time():
-     if not wait_for_resume(item,cfg,deadline):continue
+     deferred[manga_id]=item['resume_epoch']
+     continue
     storage_safe=True
     try:
      directory=Path(item['directory']);directory.mkdir(parents=True,exist_ok=True)
@@ -168,8 +178,18 @@ def worker(cfg,url=None,retry_id=None):
          item.update(state='waiting_upscale',reason='Upscaling pages for '+scope['id']);save(root/'library.json',library);snapshot.checkpoint()
          storage_safe=False;library,failure=upscale_handoff(snapshot,manga_id,cfg);item=next(m for m in library['manga'] if m['id']==manga_id);storage_safe=True
          if read(receipt,{}).get('scope_hash')!=digest(scope):
+          pending=failure if isinstance(failure,Pending) else None
+          if not failure and item.get('state')=='waiting':pending=Pending(item['reason'],item.get('resume_epoch'))
+          if pending:
+           speech_receipt=scope_path.parent/'speech'/'complete.json'
+           if not speech_receipt.exists() and time.time()<deadline-120:
+            from .part_audio import prepare
+            status(jobroot,api,'generating_narration_during_gpu_wait',active_part=scope['id'])
+            try:prepare(api,jobroot,scope,jobcfg)
+            except Pending:pass
+            snapshot.checkpoint()
+           raise pending
           if failure:raise failure
-          if item.get('state')=='waiting':raise Pending(item.get('reason'),item.get('resume_epoch'))
           raise Attention(item.get('reason') or 'Missing part upscale receipt')
          item['state']='producing'
        try:progress=turn(jobroot,inventory,api,jobcfg)
@@ -211,7 +231,7 @@ def worker(cfg,url=None,retry_id=None):
      if storage_safe:
       save(root/'library.json',library);report(root);snapshot.checkpoint()
     if item['state']=='waiting':
-     queue_ids.appendleft(manga_id)
+     deferred[manga_id]=item['resume_epoch']
    report(root);snapshot.checkpoint()
  finally:
   if hasattr(snapshot.store,'close'):snapshot.store.close()
