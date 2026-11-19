@@ -173,7 +173,7 @@ def worker(cfg,url=None,retry_id=None):
          scope=read(scope_path);receipt=scope_path.parent/'upscale-complete.json'
          if (scope_path.parent/'complete.json').exists() or read(receipt,{}).get('scope_hash')==digest(scope):continue
          selected={unit['id']:unit for unit in inventory['units']}
-         originals={Path(page['path']).relative_to(item['source']).as_posix():page['sha256'] for part_unit in scope['units'] for page in selected[part_unit['id']]['pages']}
+         originals={Path(page['path']).relative_to(item['source']).as_posix():page['sha256'] for part_unit in scope['units'] for page in selected[part_unit['id']]['pages'] if (read(jobroot/'pages'/(page['page_id']+'.json'),{}).get('status')!='omitted_content_rejection')}
          save(directory/'upscale-task.json',dict(part=scope['id'],scope_hash=digest(scope),originals=originals))
          item.update(state='waiting_upscale',reason='Upscaling pages for '+scope['id']);save(root/'library.json',library);snapshot.checkpoint()
          storage_safe=False;library,failure=upscale_handoff(snapshot,manga_id,cfg);item=next(m for m in library['manga'] if m['id']==manga_id);storage_safe=True

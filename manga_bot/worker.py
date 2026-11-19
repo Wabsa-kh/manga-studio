@@ -23,8 +23,8 @@ def initialize(config):
  return root,data
 
 def status(root,api,state,**fields):
- inv=read(root/'inventory.json');drafts=list((root/'units').glob('*/draft.json'));videos=list((root/'units').glob('*/video.json'));parts=list((root/'parts').glob('*/complete.json'));pages=len(list((root/'pages').glob('*.json')))
- data=dict(updated_utc=utc(),state=state,total_pages=len(inv['pages']),pages_read=pages,total_units=len(inv['units']),units_written=len(drafts),units_rendered=len(videos),parts_complete=len(parts),part_minutes_target=read(root/'config.json').get('part_minutes',[45,60]),manual_story_corrections=0,manual_prose_edits=0,usage=api.budget.summary(),evaluation_only=True,**fields);save(root/'status.json',data)
+ inv=read(root/'inventory.json');drafts=list((root/'units').glob('*/draft.json'));videos=list((root/'units').glob('*/video.json'));parts=list((root/'parts').glob('*/complete.json'));evidence=[read(path) for path in (root/'pages').glob('*.json')];omitted=sum(r.get('status')=='omitted_content_rejection' for r in evidence);pages=len(evidence)-omitted
+ data=dict(updated_utc=utc(),state=state,total_pages=len(inv['pages']),pages_read=pages,pages_omitted=omitted,total_units=len(inv['units']),units_written=len(drafts),units_rendered=len(videos),parts_complete=len(parts),part_minutes_target=read(root/'config.json').get('part_minutes',[45,60]),manual_story_corrections=0,manual_prose_edits=0,usage=api.budget.summary(),evaluation_only=True,**fields);save(root/'status.json',data)
  text=f"# {read(root/'config.json')['title']} unattended test\n\nState: {state}\n\nPages read: {pages}/{len(inv['pages'])}; units written: {len(drafts)}/{len(inv['units'])}; rendered: {len(videos)}; complete parts: {len(parts)}.\n\nTarget: {data['part_minutes_target'][0]}-{data['part_minutes_target'][1]} minutes per part. Story and prose edits by the operator: 0. Outputs are evaluation cuts, not publication approval.\n\n"
  if fields.get('reason'):text+='Current condition: '+fields['reason']+'\n\n'
  for p in sorted(parts):
@@ -48,7 +48,9 @@ def turn(root,inv,api,config,text_only=False):
   for u in inv['units']:
    draft=read(root/'units'/u['id']/'draft.json')
    if draft and not (root/'units'/u['id']/'video.json').exists() and (not batching or (root/'units'/u['id']/'audio-prepared.json').exists()):
-    try:status(root,api,'generating_audio_and_video',active_unit=u['id']);unit_video(api,root,u,draft);return True
+    omitted=set(draft.get('omitted_page_ids',[]))
+    render_unit={**u,'pages':[p for p in u['pages'] if p['page_id'] not in omitted]}
+    try:status(root,api,'generating_audio_and_video',active_unit=u['id']);unit_video(api,root,render_unit,draft);return True
     except Pending as exc:waits.append(exc);break
   for manifest in sorted((root/'parts').glob('*/scope.json')):
    part=read(manifest)

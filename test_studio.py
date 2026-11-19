@@ -9,6 +9,16 @@ from manga_bot.manage import add,doctor
 from manga_bot.providers import Google,MODELS
 
 class StudioTests(unittest.TestCase):
+ def test_rejected_reader_batch_is_recorded_without_retrying_images(self):
+  from manga_bot.credentials import ContentRejected
+  from manga_bot.stages import read_batch
+  from unittest.mock import Mock
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);page={'page_id':'ch1-p001','sha256':'example'}
+   api=Mock();api.generate.side_effect=ContentRejected('Saved content rejection requires owner review')
+   read_batch(api,root,[page]);read_batch(api,root,[page])
+   api.generate.assert_called_once()
+   self.assertEqual(read(root/'pages/ch1-p001.json'),{'status':'omitted_content_rejection','source_sha256':'example'})
  def test_wait_for_colab_in_same_run_obeys_cooldown_and_deadline(self):
   from manga_bot.manage import wait_for_resume
   now=[1000.]

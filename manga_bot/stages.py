@@ -2,6 +2,7 @@
 import copy,re
 from pathlib import Path
 from .core import read,save,digest,event,Attention
+from .credentials import ContentRejected
 from reader_v3 import corner_schema
 from series_video_v9 import READ_PROMPT,candidate_from_output
 from series_writing_v9 import ledger,WRITE_PROMPT,check_script
@@ -32,7 +33,14 @@ def read_batch(api,root,pages):
   if old and old.get('source_sha256')!=p['sha256']:raise Attention('Cached evidence belongs to a different original: '+p['page_id'])
  missing=[p for p in pages if not (root/'pages'/(p['page_id']+'.json')).exists()]
  if not missing:return
- result=api.generate('reader',READ,{'task':'Extract every supplied page in this exact order','page_ids':[p['page_id'] for p in missing]},missing,reader_schema(),24576)
+ try:
+  result=api.generate('reader',READ,{'task':'Extract every supplied page in this exact order','page_ids':[p['page_id'] for p in missing]},missing,reader_schema(),24576)
+ except Attention as exc:
+  if not isinstance(exc,ContentRejected) and not str(exc).startswith('Content screening rejected these images'):raise
+  for page in missing:
+   save(root/'pages'/(page['page_id']+'.json'),dict(status='omitted_content_rejection',source_sha256=page['sha256']))
+  event(root,'page_batch_omitted',pages=[p['page_id'] for p in missing])
+  return
  output=result.get('output');errors=schema_errors(reader_schema(),output) if result.get('complete') else ['Incomplete reader response']
  if not errors and [p['page_id'] for p in output['pages']]!=[p['page_id'] for p in missing]:errors=['Page list differs']
  converted=[]
@@ -81,7 +89,10 @@ means tightly continuing action. Do not change the story to improve this score.
 def write_unit(api,root,unit,previous):
  target=root/'units'/unit['id'];target.mkdir(parents=True,exist_ok=True)
  if (target/'draft.json').exists():return read(target/'draft.json')
- readings=[read(root/'pages'/(p['page_id']+'.json')) for p in unit['pages']]
+ entries=[(p,read(root/'pages'/(p['page_id']+'.json'))) for p in unit['pages']]
+ omitted=[p['page_id'] for p,r in entries if r.get('status')=='omitted_content_rejection']
+ unit={**unit,'pages':[p for p,r in entries if p['page_id'] not in omitted]}
+ readings=[r for p,r in entries if p['page_id'] not in omitted]
  pages,index=ledger(readings)
  if not index:raise Attention('No evidence extracted for '+unit['id'])
  save(target/'source-ledger.json',{'pages':pages,'index':index})
@@ -96,6 +107,8 @@ def write_unit(api,root,unit,previous):
  # source wording, order and attribution, using reversible short IDs instead.
  compact=[dict(page_id=p['page_id'],items=[dict(id=reverse[r['id']],kind=r['kind'],text=r['text'],speaker=r['speaker']) for r in p['items']],uncertainties=p['uncertainties']) for p in pages]
  payload=dict(current_pages=compact,page_classification=[dict(page_id=p['page_id'],kind=r['page_kind'],story=r['story_content_present']) for p,r in zip(unit['pages'],readings)],established_entities=list(registry.values()),prior_handoffs=[dict(unit=d['chapter'],handoff=d['handoff']) for d in previous],recent_narration=[d['text'][-12000:] for d in previous[-2:]],task='Write the complete current unit; preserve source disclosure order. Original images are authoritative. Cite current short evidence IDs e0001 etc in source_ids. Previous-unit IDs are memory only.')
+ if omitted:
+  payload.update(omitted_page_ids=omitted,omission_instruction='These pages are unavailable. Do not reconstruct their events. If the scene changes, resume from the next verified scene.')
  for attempt in range(2):
   response=api.generate('writer',WRITE,payload,unit['pages'],schema,49152 if attempt==0 else 65536,'MEDIUM')
   output=response.get('output');errors=schema_errors(schema,output) if response.get('complete') else ['Incomplete writer output: '+str(response.get('finish'))]
@@ -114,5 +127,5 @@ def write_unit(api,root,unit,previous):
   own=[r for r in s['source_ids'] if index[r]['page_id']==s['page_id']]
   beats.append({**s,'id':unit['id']+f'-beat-{i+1:04}','primary_source_id':own[0]})
  disagreements=[dict(page_id=c['page_id'],reader_story=readings[pids.index(c['page_id'])]['story_content_present'],writer_decision=c['decision'],reason=c['reason']) for c in output['coverage'] if c['decision']=='metadata' and readings[pids.index(c['page_id'])]['story_content_present']]
- draft={**output,'source_aliases':aliases,'classification_disagreements':disagreements,'chapter':unit['id'],'chapters':unit['chapters'],'beats':beats,'text':text,'words':len(text.split()),'text_sha256':digest(text),'manual_prose_edits':False,'manual_source_edits':False,'evaluation_only':True,'model':response['config']['model']}
+ draft={**output,'omitted_page_ids':omitted,'source_aliases':aliases,'classification_disagreements':disagreements,'chapter':unit['id'],'chapters':unit['chapters'],'beats':beats,'text':text,'words':len(text.split()),'text_sha256':digest(text),'manual_prose_edits':False,'manual_source_edits':False,'evaluation_only':True,'model':response['config']['model']}
  save(target/'draft.json',draft);event(root,'draft_complete',unit=unit['id'],words=draft['words'],boundary=draft['boundary'],manual_content_edits=0);return draft
