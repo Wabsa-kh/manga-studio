@@ -44,24 +44,26 @@ class RcloneStore:
   if os.environ.get('MANGA_RCLONE_CONFIG'):
    handle=tempfile.NamedTemporaryFile(prefix='manga-rclone-',suffix='.conf',delete=False);handle.write(os.environ['MANGA_RCLONE_CONFIG'].encode());handle.close();self.config=Path(handle.name);self.config.chmod(0o600)
   self.command(['mkdir',self.remote])
- def command(self,args):
+ def command(self,args,timeout=600):
   cmd=['rclone',*( ['--config',str(self.config)] if self.config else []),*args,'--retries','3','--low-level-retries','3','--contimeout','30s','--timeout','2m','--tpslimit','2','--tpslimit-burst','1']
-  try:r=subprocess.run(cmd,capture_output=True,timeout=600)
+  try:r=subprocess.run(cmd,capture_output=True,timeout=timeout)
   except subprocess.TimeoutExpired:raise StorageFailure('storage_timeout') from None
   if r.returncode:raise storage_failure(r.stderr)
  def put(self,source,name):self.command(['copyto',str(source),self.remote+'/'+key(name)])
  def put_many(self,entries):
+  entries=list(entries)
   with tempfile.TemporaryDirectory(prefix='manga-bulk-put-') as folder:
    root=Path(folder)
    for source,name in entries:
     target=root/key(name);target.parent.mkdir(parents=True,exist_ok=True)
     try:os.link(source,target)
     except OSError:shutil.copyfile(source,target)
-   self.command(['copy',str(root),self.remote,'--immutable','--checksum','--fast-list','--transfers','4','--checkers','4'])
+   self.command(['copy',str(root),self.remote,'--immutable','--checksum','--fast-list','--transfers','4','--checkers','4'],timeout=600+3*len(entries))
  def get_many(self,entries):
+  entries=list(entries)
   with tempfile.TemporaryDirectory(prefix='manga-bulk-get-') as folder:
    root=Path(folder);listing=root/'files.txt';listing.write_text(''.join(key(name)+'\n' for name,_ in entries),encoding='utf-8');staged=root/'data'
-   self.command(['copy',self.remote,str(staged),'--files-from-raw',str(listing),'--fast-list','--transfers','4','--checkers','4'])
+   self.command(['copy',self.remote,str(staged),'--files-from-raw',str(listing),'--fast-list','--transfers','4','--checkers','4'],timeout=600+3*len(entries))
    if not all((staged/key(name)).is_file() for name,_ in entries):return False
    for name,target in entries:
     Path(target).parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(staged/key(name),target)
