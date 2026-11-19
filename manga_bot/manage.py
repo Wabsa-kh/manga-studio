@@ -64,6 +64,29 @@ def pull(cfg,manga_id,part_id,destination):
  finally:
   if hasattr(store,'close'):store.close()
 
+def story_job(cfg,item,snapshot):
+ root=snapshot.root;manga_id=item['id'];directory=Path(item['directory'])
+ if snapshot.lazy_source:
+  snapshot.active_images=(Path('manga')/manga_id/'source',)
+  snapshot.restore()
+  snapshot.active_images=()
+ from .worker import initialize
+ from .routing import Router as Google
+ jobcfg={**{k:v for k,v in cfg.items() if k!='_console_log'},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state'),'part_minutes':item.get('part_minutes',cfg.get('part_minutes',[45,60]))};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint,quota_limits=cfg.get('quota_limits'));api.assets=snapshot
+ return jobroot,inventory,api,jobcfg
+
+def draft_during_gpu_wait(cfg,item,snapshot,until):
+ from .worker import turn
+ parts=Path(item['directory'])/'job'/'parts'
+ if any(parts.glob('*/scope.json')) or time.time()>=until:return
+ jobroot,inventory,api,jobcfg=story_job(cfg,item,snapshot)
+ with Singleton(jobroot/'worker.lock'):
+  while time.time()<until and not any(parts.glob('*/scope.json')):
+   try:progress=turn(jobroot,inventory,api,jobcfg,text_only=True)
+   except Pending:break
+   snapshot.checkpoint()
+   if not progress:break
+
 def worker(cfg,url=None,retry_id=None):
  root=Path(cfg['state_root']);root.mkdir(parents=True,exist_ok=True);backend=cfg['storage']['backend']
  if backend=='local':snapshot=Snapshot(root,LocalStore(os.environ.get('MANGA_LOCAL_ARCHIVE',str(root.parent/'archive'))),lazy_upscale=True,lazy_media=True)
@@ -120,16 +143,15 @@ def worker(cfg,url=None,retry_id=None):
      if cfg['upscale']['enabled'] and not item.get('upscale_complete'):
       item.update(state='waiting_upscale',reason='GPU upscale task exported for Colab');save(directory/'upscale-task.json',dict(source=item['source'],target=str(directory/'upscaled'),state=str(root),mode=cfg['upscale'].get('color_mode','bw')));save(root/'library.json',library);snapshot.checkpoint()
       storage_safe=False;library,failure=upscale_handoff(snapshot,item['id'],cfg);item=next(m for m in library['manga'] if m['id']==manga_id);storage_safe=True
-      if failure:raise failure
+      if isinstance(failure,Pending) and not item.get('upscale_complete'):
+       draft_during_gpu_wait(cfg,item,snapshot,min(deadline-120,failure.resume))
+      if failure and not item.get('upscale_complete'):raise failure
       if not item.get('upscale_complete'):
        if item.get('state')=='waiting':raise Pending(item.get('reason','Colab upscaling is waiting'),item.get('resume_epoch') or time.time()+3600)
        raise Attention(item.get('reason','Colab returned without a verified completion receipt'))
-     if snapshot.lazy_source:
-      snapshot.active_images=(Path('manga')/manga_id/'source',)
-      snapshot.restore()
-     from .worker import initialize,turn,status
-     from .routing import Router as Google
-     jobcfg={**{k:v for k,v in cfg.items() if k!='_console_log'},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state'),'part_minutes':item.get('part_minutes',cfg.get('part_minutes',[45,60]))};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint,quota_limits=cfg.get('quota_limits'));api.assets=snapshot;item['state']='producing'
+     jobroot,inventory,api,jobcfg=story_job(cfg,item,snapshot)
+     item['state']='producing'
+     from .worker import turn,status
      with Singleton(jobroot/'worker.lock'):
       while time.time()<deadline:
        try:progress=turn(jobroot,inventory,api,jobcfg)

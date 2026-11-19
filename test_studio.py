@@ -18,6 +18,16 @@ class StudioTests(unittest.TestCase):
    self.assertFalse(wait_for_resume({'resume_epoch':2400},{},9000))
    self.assertTrue(wait_for_resume({'resume_epoch':1900},{},9000))
    self.assertEqual(now[0],1900)
+ def test_gpu_wait_prepares_first_part_from_originals_without_rendering(self):
+  from manga_bot.manage import draft_during_gpu_wait
+  from unittest.mock import Mock
+  with tempfile.TemporaryDirectory() as d:
+   directory=Path(d);job=directory/'job';job.mkdir();snapshot=Mock()
+   def prepared(root,inv,api,cfg,text_only):
+    self.assertTrue(text_only);save(root/'parts/part-001/scope.json',{});return True
+   with patch('manga_bot.manage.story_job',return_value=(job,{},None,{})) as opened,patch('manga_bot.worker.turn',side_effect=prepared):
+    for _ in range(2):draft_during_gpu_wait({},dict(directory=d),snapshot,time.time()+60)
+   opened.assert_called_once();snapshot.checkpoint.assert_called_once()
  def test_gpu_prefetch_skips_finished_pages_and_pipelines_the_next_chapter(self):
   from manga_bot.upscale import stream_chapters,verify
   import threading
