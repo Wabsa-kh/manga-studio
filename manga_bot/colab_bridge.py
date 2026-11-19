@@ -1,7 +1,7 @@
 """Launch CPU download or GPU upscale tasks; Drive is the durable handoff."""
-import os,json,subprocess,tempfile,zipfile
+import os,json,subprocess,tempfile,time,zipfile
 from pathlib import Path
-from .core import read,save,Attention
+from .core import read,save,Attention,Pending
 
 def launch(manga_id,settings):
  if not os.environ.get('COLAB_ADC_JSON'):raise Attention('Colab authentication is not connected: configure COLAB_ADC_JSON using user ADC with the documented Colab scopes')
@@ -15,11 +15,14 @@ def launch(manga_id,settings):
    try:result=subprocess.run(['colab','--auth','adc',*args],env=env,capture_output=True,timeout=timeout)
    except subprocess.TimeoutExpired:
     if settings.get('state_root'):save(Path(settings['state_root'])/'diagnostics'/('colab-'+manga_id+'-'+args[0]+'.json'),dict(operation=args[0],stage=stage,state='timeout'))
-    raise Attention('Colab '+stage+' operation timed out; saved task progress will be restored') from None
+    raise Pending('Colab '+stage+' timed out; retry from the saved checkpoint',time.time()+900) from None
    if result.returncode:
+    output=(result.stdout+b'\n'+result.stderr).decode('utf-8',errors='replace')[-12000:]
     if settings.get('state_root'):
-     output=(result.stdout+b'\n'+result.stderr).decode('utf-8',errors='replace')[-12000:]
      save(Path(settings['state_root'])/'diagnostics'/('colab-'+manga_id+'-'+args[0]+'.json'),dict(operation=args[0],stage=stage,exit_code=result.returncode,private_output=output))
+    temporary=('429','503','resource_exhausted','too many requests','temporarily unavailable','connection reset','no available gpu','timed out')
+    if any(marker in output.lower() for marker in temporary):
+     raise Pending('Colab '+stage+' temporarily unavailable; retry from the saved checkpoint',time.time()+900)
     raise Attention('Colab '+stage+' operation failed; inspect the private Drive diagnostics for runtime/authentication details')
   archive=temp/'code.zip'
   with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:

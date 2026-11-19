@@ -33,7 +33,7 @@ def storage_failure(stderr):
  details=stderr.decode('utf-8',errors='replace') if isinstance(stderr,bytes) else str(stderr);text=details.lower()
  if any(s in text for s in ('storagequotaexceeded','storage quota has been exceeded','no space left')):code='storage_full'
  elif any(s in text for s in ('ratelimitexceeded','rate limit exceeded','quota metric','too many requests','429')):code='storage_rate_limited'
- elif any(s in text for s in ('invalid_grant','unauthorized','insufficientpermissions','insufficient authentication scopes','access denied')):code='storage_authorization'
+ elif any(s in text for s in ('invalid_client','invalid_grant','unauthorized','insufficientpermissions','insufficient authentication scopes','access denied')):code='storage_authorization'
  else:code='storage_operation_failed'
  return StorageFailure(code,details[-12000:])
 
