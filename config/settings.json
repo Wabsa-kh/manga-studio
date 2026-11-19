@@ -1,8 +1,9 @@
 {
   "state_root": "state",
   "manga_list_file": "config/manga.json",
-  "max_run_minutes": 240,
+  "max_run_minutes": 300,
   "short_wait_seconds": 120,
+  "in_run_wait_minutes": 20,
   "part_minutes": [
     45,
     60

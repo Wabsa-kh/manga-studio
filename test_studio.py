@@ -9,6 +9,15 @@ from manga_bot.manage import add,doctor
 from manga_bot.providers import Google,MODELS
 
 class StudioTests(unittest.TestCase):
+ def test_wait_for_colab_in_same_run_obeys_cooldown_and_deadline(self):
+  from manga_bot.manage import wait_for_resume
+  now=[1000.]
+  def advance(seconds):now[0]+=seconds
+  with patch('manga_bot.manage.time.time',side_effect=lambda:now[0]),patch('manga_bot.manage.time.sleep',side_effect=advance):
+   self.assertFalse(wait_for_resume({'resume_epoch':1900},{},1950))
+   self.assertFalse(wait_for_resume({'resume_epoch':2400},{},9000))
+   self.assertTrue(wait_for_resume({'resume_epoch':1900},{},9000))
+   self.assertEqual(now[0],1900)
  def test_colab_cleanup_releases_only_this_runners_manga_sessions(self):
   from scripts.cleanup_colab import cleanup
   import subprocess
@@ -86,14 +95,18 @@ class StudioTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    base=Path(d);root=base/'github';root.mkdir();store=LocalStore(base/'drive')
    ident=add(root,'https://weebcentral.com/series/ABC','CPU manga');Snapshot(root,store).checkpoint()
+   attempts=[]
    def launched(manga_id,cfg):
+    attempts.append(manga_id)
+    if len(attempts)==1:raise Pending('Colab connection lost',time.time()+0.2)
     self.assertEqual(cfg['_colab_stage'],'download')
     remote=Snapshot(base/'colab',store);remote.restore();library=read(remote.root/'library.json');item=library['manga'][0]
     source=Path(item['directory'])/'source/Chapter 1';source.mkdir(parents=True);Image.new('RGB',(20,30)).save(source/'001.png')
     item.update(download_complete=True,source=str(source.parent),state='ready_for_story');save(remote.root/'library.json',library);remote.checkpoint()
-   cfg={'state_root':str(root),'storage':{'backend':'local'},'download':{'backend':'colab'},'upscale':{'enabled':False},'youtube':{'enabled':False},'max_run_minutes':1}
+   cfg={'state_root':str(root),'storage':{'backend':'local'},'download':{'backend':'colab'},'upscale':{'enabled':False},'youtube':{'enabled':False},'max_run_minutes':4}
    with patch.dict(os.environ,{'MANGA_LOCAL_ARCHIVE':str(base/'drive')}),patch('manga_bot.colab_bridge.launch',side_effect=launched),patch('manga_bot.manage.download',side_effect=AssertionError('GitHub must not download')),patch('manga_bot.worker.initialize',return_value=(root/'manga'/ident/'job',{})),patch('manga_bot.worker.turn',return_value=False),patch('manga_bot.routing.Router'):
     worker(cfg)
+   self.assertEqual(attempts,[ident,ident])
    result=read(root/'library.json')['manga'][0];self.assertEqual(result['state'],'complete');self.assertTrue(result['download_complete'])
  def test_colab_download_checkpoints_pages_before_upscaling(self):
   from manga_bot.colab_tasks import process

@@ -90,7 +90,10 @@ def worker(cfg,url=None,retry_id=None):
     from .core import Budget
     with Budget(root/'provider-state/budget.sqlite').db() as db:db.execute("DELETE FROM holds WHERE permanent=1 AND reason LIKE '%authentication%'")
     save(root/'library.json',library)
-   for manga_id in [m['id'] for m in ordered(library)]:
+   from collections import deque
+   queue_ids=deque(m['id'] for m in ordered(library))
+   while queue_ids:
+    manga_id=queue_ids.popleft()
     item=next(m for m in library['manga'] if m['id']==manga_id)
     if time.time()>deadline:break
     if not item.get('enabled',True):continue
@@ -99,7 +102,9 @@ def worker(cfg,url=None,retry_id=None):
      from .publishing import publish
      publish(job,cfg,snapshot)
     if cfg.get('_publish_only'):continue
-    if item.get('resume_epoch',0)>time.time() or item['state'] in ['complete','needs_review']:continue
+    if item['state'] in ['complete','needs_review']:continue
+    if item.get('resume_epoch',0)>time.time():
+     if not wait_for_resume(item,cfg,deadline):continue
     storage_safe=True
     try:
      directory=Path(item['directory']);directory.mkdir(parents=True,exist_ok=True);item['state']='downloading';save(root/'library.json',library);snapshot.checkpoint()
@@ -165,9 +170,17 @@ def worker(cfg,url=None,retry_id=None):
     finally:
      if storage_safe:
       save(root/'library.json',library);report(root);snapshot.checkpoint()
+    if item['state']=='waiting':
+     queue_ids.appendleft(manga_id)
    report(root);snapshot.checkpoint()
  finally:
   if hasattr(snapshot.store,'close'):snapshot.store.close()
+
+def wait_for_resume(item,cfg,deadline):
+ resume=item['resume_epoch'];now=time.time()
+ if resume>now+cfg.get('in_run_wait_minutes',20)*60 or resume>=deadline-120:return False
+ while time.time()<resume:time.sleep(min(15,max(.05,resume-time.time())))
+ return True
 
 def short_wait(exc,cfg,deadline,checkpoint):
  """Minute-level pacing stays in this run; long quota resets return to schedule."""
