@@ -130,7 +130,9 @@ def worker(cfg,url=None,retry_id=None):
      if not wait_for_resume(item,cfg,deadline):continue
     storage_safe=True
     try:
-     directory=Path(item['directory']);directory.mkdir(parents=True,exist_ok=True);item['state']='downloading';save(root/'library.json',library);snapshot.checkpoint()
+     directory=Path(item['directory']);directory.mkdir(parents=True,exist_ok=True)
+     if not item.get('download_complete'):
+      item.update(state='downloading',reason='Downloading and verifying original pages');save(root/'library.json',library);snapshot.checkpoint()
      if not item.get('download_complete'):
       if cfg.get('download',{}).get('backend','worker')=='colab':
        item.update(state='waiting_download',reason='Download task exported to Colab CPU runtime');save(root/'library.json',library);snapshot.checkpoint()
@@ -140,7 +142,9 @@ def worker(cfg,url=None,retry_id=None):
        if not item.get('download_complete'):raise Pending(item.get('reason','Colab download saved partial progress'),item.get('resume_epoch') or time.time()+3600)
       else:item['download_complete']=download(root,item,cfg,snapshot.checkpoint)
       if not item['download_complete']:item.update(state='downloading',reason='More chapters remain; saved download receipts');continue
-     if cfg['upscale']['enabled'] and not item.get('upscale_complete'):
+     per_part=cfg['upscale'].get('per_video_part') and cfg['upscale']['enabled'] and cfg.get('part_audio_batching') and not item.get('upscale_complete')
+     if per_part:item['upscaled_source']=str(directory/'upscaled')
+     if cfg['upscale']['enabled'] and not per_part and not item.get('upscale_complete'):
       item.update(state='waiting_upscale',reason='GPU upscale task exported for Colab');save(directory/'upscale-task.json',dict(source=item['source'],target=str(directory/'upscaled'),state=str(root),mode=cfg['upscale'].get('color_mode','bw')));save(root/'library.json',library);snapshot.checkpoint()
       storage_safe=False;library,failure=upscale_handoff(snapshot,item['id'],cfg);item=next(m for m in library['manga'] if m['id']==manga_id);storage_safe=True
       if isinstance(failure,Pending) and not item.get('upscale_complete'):
@@ -150,10 +154,24 @@ def worker(cfg,url=None,retry_id=None):
        if item.get('state')=='waiting':raise Pending(item.get('reason','Colab upscaling is waiting'),item.get('resume_epoch') or time.time()+3600)
        raise Attention(item.get('reason','Colab returned without a verified completion receipt'))
      jobroot,inventory,api,jobcfg=story_job(cfg,item,snapshot)
-     item['state']='producing'
+     item.update(state='producing',reason='Preparing the next video part');save(root/'library.json',library);snapshot.checkpoint()
      from .worker import turn,status
      with Singleton(jobroot/'worker.lock'):
       while time.time()<deadline:
+       if per_part:
+        for scope_path in sorted((jobroot/'parts').glob('*/scope.json')):
+         scope=read(scope_path);receipt=scope_path.parent/'upscale-complete.json'
+         if (scope_path.parent/'complete.json').exists() or read(receipt,{}).get('scope_hash')==digest(scope):continue
+         selected={unit['id']:unit for unit in inventory['units']}
+         originals={Path(page['path']).relative_to(item['source']).as_posix():page['sha256'] for part_unit in scope['units'] for page in selected[part_unit['id']]['pages']}
+         save(directory/'upscale-task.json',dict(part=scope['id'],scope_hash=digest(scope),originals=originals))
+         item.update(state='waiting_upscale',reason='Upscaling pages for '+scope['id']);save(root/'library.json',library);snapshot.checkpoint()
+         storage_safe=False;library,failure=upscale_handoff(snapshot,manga_id,cfg);item=next(m for m in library['manga'] if m['id']==manga_id);storage_safe=True
+         if read(receipt,{}).get('scope_hash')!=digest(scope):
+          if failure:raise failure
+          if item.get('state')=='waiting':raise Pending(item.get('reason'),item.get('resume_epoch'))
+          raise Attention(item.get('reason') or 'Missing part upscale receipt')
+         item['state']='producing'
        try:progress=turn(jobroot,inventory,api,jobcfg)
        except Pending as exc:
         status(jobroot,api,'waiting',reason=exc.reason,resume_epoch=exc.resume)

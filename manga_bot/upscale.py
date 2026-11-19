@@ -15,7 +15,7 @@ def verify(source,output,scale=4):
   return dict(source_sha256=sha(source),output_sha256=sha(output),size=list(got),scale=scale)
  except (OSError,ValueError):return None
 
-def stream_chapters(snapshot,source,target,state,**options):
+def stream_chapters(snapshot,source,target,state,originals=None,**options):
  """Read the next chapter into scratch space while the GPU renders this one."""
  import tempfile
  from concurrent.futures import ThreadPoolExecutor
@@ -25,12 +25,17 @@ def stream_chapters(snapshot,source,target,state,**options):
  for name,row in snapshot.entries.items():
   path=Path(name)
   if not path.is_relative_to(prefix) or path.suffix.lower() not in {'.jpg','.jpeg','.png','.webp'}:continue
-  rel=path.relative_to(prefix);out=(target/rel).with_suffix('.png')
+  rel=path.relative_to(prefix)
+  if originals is not None:
+   if rel.as_posix() not in originals:continue
+   if originals[rel.as_posix()]!=row['sha256']:raise Attention('Part scope refers to a different source page')
+  out=(target/rel).with_suffix('.png')
   receipt=read(out.with_suffix('.upscale.json'),{})
   saved=snapshot.entries.get(out.relative_to(snapshot.root).as_posix(),{})
   total+=1
   if receipt.get('scale')==4 and receipt.get('source_sha256')==row['sha256'] and saved and receipt.get('output_sha256')==saved['sha256']:continue
   chapters.setdefault(rel.parent,[]).append((rel.name,row['sha256']))
+ if originals is not None and total!=len(originals):raise Attention('Part scope has missing source pages')
  if not total:raise Attention('Verified source pages missing from the GPU task manifest')
  def fetch(chapter,folder):
   folder.mkdir();blobs={}

@@ -1,6 +1,7 @@
 """Pinned upstream downloader, with strict per-chapter completion receipts."""
 import importlib,subprocess,sys,re,time
 from pathlib import Path
+from functools import lru_cache
 from urllib.parse import urlparse,urlunparse
 from PIL import Image
 from .core import read,save,digest,sha,Attention,Pending
@@ -34,7 +35,12 @@ def verified_images(folder,expected):
  return result
 
 def download(root,job,settings,checkpoint=lambda:None):
- root=Path(root);folder=vendor(root,'downloader');sys.path.insert(0,str(folder));module=importlib.import_module('weebcentral_scraper');config=settings['download'];source=Path(job['directory'])/'source';source.mkdir(parents=True,exist_ok=True);scraper=module.WeebCentralScraper(job['url'],output_dir=str(source),delay=config.get('delay_seconds',1.5),max_threads=config.get('threads',2));chapters=scraper.get_chapters()
+ root=Path(root);folder=vendor(root,'downloader');sys.path.insert(0,str(folder));module=importlib.import_module('weebcentral_scraper');config=settings['download'];source=Path(job['directory'])/'source';source.mkdir(parents=True,exist_ok=True)
+ # Verification and the pinned downloader both ask for the same page list.
+ class SeriesScraper(module.WeebCentralScraper):
+  @lru_cache(maxsize=1)
+  def get_chapter_images(self,url):return super().get_chapter_images(url)
+ scraper=SeriesScraper(job['url'],output_dir=str(source),delay=config.get('delay_seconds',1.5),max_threads=config.get('threads',2));chapters=scraper.get_chapters()
  if not chapters:raise Pending('No chapters returned; download remains incomplete',time.time()+3600)
  job.update(expected_chapters=len(chapters),source=str(source.resolve()));checkpoint()
  completed=0;limit=config.get('chapter_limit_per_run',0) or len(chapters)

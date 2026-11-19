@@ -28,6 +28,25 @@ class StudioTests(unittest.TestCase):
    with patch('manga_bot.manage.story_job',return_value=(job,{},None,{})) as opened,patch('manga_bot.worker.turn',side_effect=prepared):
     for _ in range(2):draft_during_gpu_wait({},dict(directory=d),snapshot,time.time()+60)
    opened.assert_called_once();snapshot.checkpoint.assert_called_once()
+ def test_part_upscale_uses_only_frozen_pages_and_rejects_hash_drift(self):
+  from manga_bot.colab_tasks import process
+  from manga_bot.upscale import stream_chapters
+  from manga_bot.core import sha
+  with tempfile.TemporaryDirectory() as d:
+   base=Path(d);root=base/'github';book=root/'manga/abc';src=book/'source';store=LocalStore(base/'drive')
+   for n in range(2):
+    page=src/'Chapter 1'/f'{n}.png';page.parent.mkdir(parents=True,exist_ok=True);Image.new('L',(4,5),n).save(page)
+   scope={'id':'part-001','units':[{'id':'one'}]};folder=book/'job/parts/part-001';save(folder/'scope.json',scope)
+   pages={'Chapter 1/0.png':sha(src/'Chapter 1/0.png')};save(book/'upscale-task.json',dict(part='part-001',scope_hash=digest(scope),originals=pages))
+   save(root/'library.json',{'manga':[dict(id='abc',directory=str(book),source=str(src),download_complete=True)]});Snapshot(root,store).checkpoint()
+   gpu=Snapshot(base/'gpu',store,lazy_source=True);gpu.restore();seen=[]
+   def upscale(source,target,state,**kwargs):
+    seen.extend(p.name for p in source.glob('*.png'));target.mkdir(parents=True,exist_ok=True);Image.new('L',(16,20)).save(target/'0.png');kwargs['checkpoint']()
+   with patch('manga_bot.upscale.run',side_effect=upscale):
+    result=process(gpu,'abc','upscale',{})
+   self.assertEqual(seen,['0.png']);self.assertFalse(result.get('upscale_complete'));self.assertEqual(result['state'],'ready_for_render')
+   self.assertEqual(read(gpu.root/'manga/abc/job/parts/part-001/upscale-complete.json')['scope_hash'],digest(scope))
+   with self.assertRaises(Attention):stream_chapters(gpu,result['source'],result['upscaled_source'],gpu.root,originals={'Chapter 1/1.png':'wrong'})
  def test_gpu_prefetch_skips_finished_pages_and_pipelines_the_next_chapter(self):
   from manga_bot.upscale import stream_chapters,verify
   import threading
@@ -324,13 +343,15 @@ class StudioTests(unittest.TestCase):
   from types import SimpleNamespace
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);folder=root/'book/source/Chapter 1'
+   lookups=[]
    class Fake:
     def __init__(self,*args,**kwargs):pass
     def get_chapters(self):return [{'name':'Chapter 1','url':'https://weebcentral.com/chapters/ONE'}]
-    def get_chapter_images(self,*args):return ['https://images.test/1.png','https://images.test/2.png']
-    def download_chapter(self,*args):folder.mkdir(parents=True);Image.new('RGB',(20,30)).save(folder/'001.png');return 1,str(folder)
+    def get_chapter_images(self,url):lookups.append(url);return ['https://images.test/1.png','https://images.test/2.png']
+    def download_chapter(self,chapter):self.get_chapter_images(chapter['url']);folder.mkdir(parents=True);Image.new('RGB',(20,30)).save(folder/'001.png');return 1,str(folder)
    with patch('manga_bot.ingest.vendor',return_value=root),patch('manga_bot.ingest.importlib.import_module',return_value=SimpleNamespace(WeebCentralScraper=Fake)):
     with self.assertRaises(Pending):download(root,{'url':'https://weebcentral.com/series/ABC','directory':str(root/'book')},{'download':{}})
+   self.assertEqual(len(lookups),1)
    receipt=next((root/'book/downloads').glob('*.json'));self.assertFalse(read(receipt)['complete']);self.assertTrue((folder/'001.png').exists())
  def test_colab_disconnect_preserves_newer_gpu_checkpoint(self):
   from manga_bot.manage import upscale_handoff

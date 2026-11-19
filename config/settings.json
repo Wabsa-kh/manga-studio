@@ -36,6 +36,7 @@
     "scale": 4,
     "color_mode": "bw",
     "gpu": "T4",
+    "per_video_part": true,
     "checkpoint_pages": 16,
     "checkpoint_seconds": 60
   },
