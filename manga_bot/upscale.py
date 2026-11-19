@@ -15,6 +15,49 @@ def verify(source,output,scale=4):
   return dict(source_sha256=sha(source),output_sha256=sha(output),size=list(got),scale=scale)
  except (OSError,ValueError):return None
 
+def stream_chapters(snapshot,source,target,state,**options):
+ """Read the next chapter into scratch space while the GPU renders this one."""
+ import tempfile
+ from concurrent.futures import ThreadPoolExecutor
+ from .core import Pending
+ source=Path(source);target=Path(target);prefix=source.relative_to(snapshot.root)
+ chapters={};total=0
+ for name,row in snapshot.entries.items():
+  path=Path(name)
+  if not path.is_relative_to(prefix) or path.suffix.lower() not in {'.jpg','.jpeg','.png','.webp'}:continue
+  rel=path.relative_to(prefix);out=(target/rel).with_suffix('.png')
+  receipt=read(out.with_suffix('.upscale.json'),{})
+  saved=snapshot.entries.get(out.relative_to(snapshot.root).as_posix(),{})
+  total+=1
+  if receipt.get('scale')==4 and receipt.get('source_sha256')==row['sha256'] and saved and receipt.get('output_sha256')==saved['sha256']:continue
+  chapters.setdefault(rel.parent,[]).append((rel.name,row['sha256']))
+ if not total:raise Attention('Verified source pages missing from the GPU task manifest')
+ def fetch(chapter,folder):
+  folder.mkdir();blobs={}
+  for name,h in chapters[chapter]:
+   blobs.setdefault(h,folder/name)
+  entries=[('objects/'+h[:2]+'/'+h[2:],dest) for h,dest in blobs.items()]
+  ok=snapshot.store.get_many(entries) if hasattr(snapshot.store,'get_many') else all(snapshot.store.get(key,dest) for key,dest in entries)
+  if not ok or any(sha(dest)!=h for h,dest in blobs.items()):raise Attention('Source chapter failed its Drive checksum check')
+  for name,h in chapters[chapter]:
+   if folder/name!=blobs[h]:shutil.copyfile(blobs[h],folder/name)
+  return folder
+ deadline=options.pop('deadline',float('inf'))
+ ordered=list(chapters)
+ if ordered:
+  with tempfile.TemporaryDirectory(prefix='manga-gpu-input-') as scratch, ThreadPoolExecutor(max_workers=1) as io:
+   base=Path(scratch);future=io.submit(fetch,ordered[0],base/'0')
+   for index,chapter in enumerate(ordered):
+    if time.time()>=deadline-120:raise Pending('GPU time budget reached; verified pages saved',time.time()+60)
+    current=future.result()
+    if index+1<len(ordered):future=io.submit(fetch,ordered[index+1],base/str(index+1))
+    run(current,target/chapter,state,**options)
+    for name,_ in chapters[chapter]:
+     output=(target/chapter/name).with_suffix('.png')
+     if output.exists():snapshot.evict_path(output)
+    shutil.rmtree(current)
+ return total
+
 def run(source,target,state,mode='bw',checkpoint=lambda:None,checkpoint_pages=16,checkpoint_seconds=60):
  import torch
  if not torch.cuda.is_available():raise Attention('GPU upscale requires a connected Colab GPU runtime; source images remain intact')

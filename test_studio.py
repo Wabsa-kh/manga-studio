@@ -18,6 +18,28 @@ class StudioTests(unittest.TestCase):
    self.assertFalse(wait_for_resume({'resume_epoch':2400},{},9000))
    self.assertTrue(wait_for_resume({'resume_epoch':1900},{},9000))
    self.assertEqual(now[0],1900)
+ def test_gpu_prefetch_skips_finished_pages_and_pipelines_the_next_chapter(self):
+  from manga_bot.upscale import stream_chapters,verify
+  import threading
+  loaded=threading.Event()
+  class Store(LocalStore):
+   def get_many(self,entries):
+    for key,dest in entries:
+     if not self.get(key,dest):return False
+    if entries[0][1].parent.name=='1':loaded.set()
+    return True
+  with tempfile.TemporaryDirectory() as d:
+   base=Path(d);root=base/'first';src=root/'source';target=root/'upscaled';store=Store(base/'store')
+   for n in range(3):
+    page=src/str(n)/'001.png';page.parent.mkdir(parents=True);Image.new('L',(4,4),n).save(page)
+   out=target/'0/001.png';out.parent.mkdir(parents=True);Image.new('L',(16,16)).save(out)
+   save(out.with_suffix('.upscale.json'),verify(src/'0/001.png',out));Snapshot(root,store).checkpoint()
+   fresh=Snapshot(base/'gpu',store,lazy_source=True);fresh.restore();seen=[]
+   def render(folder,target,state,**options):
+    self.assertTrue(loaded.wait(3));self.assertTrue((folder/'001.png').exists());seen.append(target.name)
+   with patch('manga_bot.upscale.run',side_effect=render):
+    self.assertEqual(stream_chapters(fresh,fresh.root/'source',fresh.root/'upscaled',fresh.root),3)
+   self.assertEqual(seen,['1','2'])
  def test_colab_cleanup_releases_only_this_runners_manga_sessions(self):
   from scripts.cleanup_colab import cleanup
   import subprocess

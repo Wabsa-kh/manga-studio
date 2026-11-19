@@ -17,11 +17,14 @@ def process(snapshot,manga_id,stage,cfg):
     if not item['download_complete']:raise Pending('More chapters remain; Colab download receipts preserved',time.time()+60)
    item.update(state='ready_for_upscale' if cfg.get('upscale',{}).get('enabled') else 'ready_for_story',reason='Original pages downloaded and verified in Colab',resume_epoch=0)
   else:
-   from .upscale import run
+   from .upscale import run,stream_chapters
    if not item.get('download_complete'):raise Attention('Download must complete before GPU upscaling')
    target=directory/'upscaled';item['state']='upscaling';checkpoint()
    options=cfg.get('upscale',{})
-   run(item['source'],target,state,mode=options.get('color_mode','bw'),checkpoint=checkpoint,checkpoint_pages=options.get('checkpoint_pages',16),checkpoint_seconds=options.get('checkpoint_seconds',60))
+   render=run
+   if snapshot.lazy_source:
+    def render(source,target,state,**kwargs):return stream_chapters(snapshot,source,target,state,deadline=cfg.get('_deadline',float('inf')),**kwargs)
+   render(item['source'],target,state,mode=options.get('color_mode','bw'),checkpoint=checkpoint,checkpoint_pages=options.get('checkpoint_pages',16),checkpoint_seconds=options.get('checkpoint_seconds',60))
    item.update(upscale_complete=True,upscaled_source=str(target),state='ready_for_story',reason='Verified 4x upscale complete',resume_epoch=0)
  except Pending as exc:item.update(state='waiting',reason=exc.reason,resume_epoch=exc.resume)
  except Attention as exc:item.update(state='needs_review',reason=str(exc))
