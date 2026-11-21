@@ -145,6 +145,7 @@ def worker(cfg,url=None,retry_id=None):
     snapshot.checkpoint()
     read_saved_pages(cfg,library,snapshot,deadline)
     return
+   phase=cfg.get('_phase','all')
    if retry_id:
     selected=next((m for m in library['manga'] if m['id']==retry_id),None)
     if not selected:raise ValueError('Unknown saved manga ID')
@@ -169,10 +170,28 @@ def worker(cfg,url=None,retry_id=None):
     if time.time()>deadline:break
     if not item.get('enabled',True):continue
     job=Path(item['directory'])/'job'
-    if (job/'config.json').exists():
+    if phase=='all' and (job/'config.json').exists():
      from .publishing import publish
      publish(job,cfg,snapshot)
-    if cfg.get('_publish_only'):continue
+    if phase=='prepare':
+     if not item.get('download_complete'):continue
+     jobroot,inv,api,jobcfg=story_job(cfg,item,snapshot)
+     from .worker import turn,status
+     with Singleton(jobroot/'worker.lock'):
+      while time.time()<deadline-120:
+       try:advanced=turn(jobroot,inv,api,jobcfg,text_only=True,prepare_audio=True)
+       except Pending as exc:
+        status(jobroot,api,'waiting',reason=exc.reason,resume_epoch=exc.resume)
+        snapshot.checkpoint()
+        if not wait_for_resume({'resume_epoch':exc.resume},cfg,deadline):break
+        continue
+       except Attention as exc:
+        status(jobroot,api,'needs_review',reason=str(exc));snapshot.checkpoint();break
+       snapshot.checkpoint()
+       if not advanced:break
+     continue
+    if phase=='download' and item.get('download_complete'):continue
+    if cfg.get('_publish_only') and phase=='all':continue
     if item['state'] in ['complete','needs_review']:continue
     if item.get('resume_epoch',0)>time.time():
      deferred[manga_id]=item['resume_epoch']
@@ -186,11 +205,12 @@ def worker(cfg,url=None,retry_id=None):
       if cfg.get('download',{}).get('backend','worker')=='colab':
        item.update(state='waiting_download',reason='Download task exported to Colab CPU runtime');save(root/'library.json',library);snapshot.checkpoint()
        storage_safe=False;library,failure=upscale_handoff(snapshot,item['id'],{**cfg,'_colab_stage':'download'});item=next(m for m in library['manga'] if m['id']==manga_id);storage_safe=True
-       if failure:raise failure
+       if failure and not item.get('download_complete'):raise failure
        if item.get('state')=='needs_review':raise Attention(item.get('reason','Colab download needs review'))
        if not item.get('download_complete'):raise Pending(item.get('reason','Colab download saved partial progress'),item.get('resume_epoch') or time.time()+3600)
       else:item['download_complete']=download(root,item,cfg,snapshot.checkpoint)
       if not item['download_complete']:item.update(state='downloading',reason='More chapters remain; saved download receipts');continue
+     if phase=='download':continue
      per_part=cfg['upscale'].get('per_video_part') and cfg['upscale']['enabled'] and cfg.get('part_audio_batching') and not item.get('upscale_complete')
      if per_part:item['upscaled_source']=str(directory/'upscaled')
      if cfg['upscale']['enabled'] and not per_part and not item.get('upscale_complete'):

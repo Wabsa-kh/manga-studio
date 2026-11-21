@@ -16,6 +16,16 @@ on:
         description: 'Saved manga ID to resume after a configuration fix/review; quota counts stay intact'
         required: false
         type: string
+      phase:
+        description: 'Stage to run'
+        type: choice
+        default: all
+        options: [all, download, prepare]
+      colab_profile:
+        description: 'Authorized Colab profile for this run'
+        type: choice
+        default: primary
+        options: [primary, alternate-1, alternate-2, alternate-3]
 concurrency:
   group: manga-production
   cancel-in-progress: false
@@ -30,6 +40,7 @@ jobs:
       MANGA_STORE_REMOTE: ${{ vars.MANGA_STORE_REMOTE }}
       MANGA_URL: ${{ inputs.manga_url }}
       MANGA_RETRY_ID: ${{ inputs.retry_manga_id }}
+      MANGA_PHASE: ${{ inputs.phase || 'all' }}
       DRY_RUN: ${{ inputs.dry_run }}
       PYTHONUNBUFFERED: '1'
     steps:
@@ -52,7 +63,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MODEL_CREDENTIALS_JSON: ${{ secrets.MODEL_CREDENTIALS_JSON }}
           MANGA_RCLONE_CONFIG: ${{ secrets.MANGA_RCLONE_CONFIG }}
-          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+          COLAB_PROFILE: ${{ inputs.colab_profile || 'primary' }}
+          COLAB_ADC_JSON: ${{ inputs.colab_profile == 'alternate-1' && secrets.COLAB_ADC_ALT_1_JSON || inputs.colab_profile == 'alternate-2' && secrets.COLAB_ADC_ALT_2_JSON || inputs.colab_profile == 'alternate-3' && secrets.COLAB_ADC_ALT_3_JSON || ((inputs.colab_profile == 'primary' || !inputs.colab_profile) && secrets.COLAB_ADC_JSON) || '' }}
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         run: python scripts/github_worker.py
@@ -60,7 +72,8 @@ jobs:
         if: always()
         timeout-minutes: 5
         env:
-          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+          COLAB_PROFILE: ${{ inputs.colab_profile || 'primary' }}
+          COLAB_ADC_JSON: ${{ inputs.colab_profile == 'alternate-1' && secrets.COLAB_ADC_ALT_1_JSON || inputs.colab_profile == 'alternate-2' && secrets.COLAB_ADC_ALT_2_JSON || inputs.colab_profile == 'alternate-3' && secrets.COLAB_ADC_ALT_3_JSON || ((inputs.colab_profile == 'primary' || !inputs.colab_profile) && secrets.COLAB_ADC_JSON) || '' }}
         run: python scripts/cleanup_colab.py
       - name: Keep public-safe connection report
         if: always()

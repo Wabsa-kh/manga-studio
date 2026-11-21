@@ -10,7 +10,17 @@ def output():
  if summary:
   with open(summary,'a',encoding='utf-8') as f:f.write('## Worker connection check\n\n'+''.join(f'- {k}: {v}\n' for k,v in checks.items()))
 cfg['_read_only']=os.environ.get('MANGA_READ_ONLY')=='1'
-ready=(checks['storage_ready'] and checks['gemini_key_configured']) if cfg['_read_only'] else (checks['production_ready'] or checks['publishing_ready'])
+cfg['_phase']=os.environ.get('MANGA_PHASE','all')
+if cfg['_phase'] not in ('all','download','prepare'):raise ValueError('Unknown worker phase')
+if cfg['_read_only'] or cfg['_phase']=='prepare':
+ ready=checks['storage_ready'] and checks['gemini_key_configured']
+elif cfg['_phase']=='download':
+ ready=checks['storage_ready'] and checks['colab_cli'] and checks['colab_credentials_configured']
+else:
+ ready=checks['production_ready'] or checks['publishing_ready']
+if os.environ.get('COLAB_PROFILE','primary')!='primary' and not checks['colab_credentials_configured'] and cfg['_phase']!='prepare':
+ ready=False
+ checks['requested_colab_profile_connected']=False
 if os.environ.get('DRY_RUN','').lower()=='true' or not ready:
  checks['state']='waiting_for_connections';output();print('Connection check completed; no production calls made.')
 else:
