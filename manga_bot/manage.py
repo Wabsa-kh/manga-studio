@@ -87,6 +87,40 @@ def draft_during_gpu_wait(cfg,item,snapshot,until):
    snapshot.checkpoint()
    if not progress:break
 
+def read_saved_pages(cfg,library,snapshot,deadline):
+ """Read saved originals without changing book state or freezing partial inventory."""
+ from .catalog import ordered
+ from .routing import Router
+ from .stages import read_batch
+ from .worker import status
+ from run import inventory
+ root=snapshot.root
+ for item in ordered(library):
+  if not item.get('enabled',True) or time.time()>=deadline-120:continue
+  directory=Path(item['directory'])
+  source=directory/'source'
+  prefix=source.relative_to(root)
+  if not any(Path(name).is_relative_to(prefix) for name in snapshot.entries):continue
+  snapshot.active_images=(prefix,)
+  try:snapshot.restore()
+  finally:snapshot.active_images=()
+  job=directory/'job'
+  pages=[p for p in inventory(source,['all']) if not (job/'pages'/(p['page_id']+'.json')).exists()]
+  api=Router(job,root/'provider-state',cfg.get('providers'),snapshot.checkpoint,quota_limits=cfg.get('quota_limits'))
+  size=cfg.get('reader_batch_pages',2)
+  for start in range(0,len(pages),size):
+   if time.time()>=deadline-120:return
+   batch=pages[start:start+size]
+   try:
+    try:read_batch(api,job,batch)
+    except Pending as exc:
+     if not short_wait(exc,cfg,deadline,snapshot.checkpoint):return
+     read_batch(api,job,batch)
+   except Pending:return
+   finally:
+    if (job/'inventory.json').exists():status(job,api,'reading_saved_pages')
+    snapshot.checkpoint()
+
 def worker(cfg,url=None,retry_id=None):
  root=Path(cfg['state_root']);root.mkdir(parents=True,exist_ok=True);backend=cfg['storage']['backend']
  if backend=='local':snapshot=Snapshot(root,LocalStore(os.environ.get('MANGA_LOCAL_ARCHIVE',str(root.parent/'archive'))),lazy_upscale=True,lazy_media=True)
@@ -106,6 +140,10 @@ def worker(cfg,url=None,retry_id=None):
    sync(root,cfg)
    if url:add(root,url)
    library=read(root/'library.json',{'version':1,'manga':[]});deadline=time.time()+cfg.get('max_run_minutes',240)*60;cfg['_deadline']=deadline
+   if cfg.get('_read_only'):
+    snapshot.checkpoint()
+    read_saved_pages(cfg,library,snapshot,deadline)
+    return
    if retry_id:
     selected=next((m for m in library['manga'] if m['id']==retry_id),None)
     if not selected:raise ValueError('Unknown saved manga ID')

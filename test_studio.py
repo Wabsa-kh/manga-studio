@@ -9,6 +9,20 @@ from manga_bot.manage import add,doctor
 from manga_bot.providers import Google,MODELS
 
 class StudioTests(unittest.TestCase):
+ def test_reader_only_uses_partial_download_without_freezing_story(self):
+  from manga_bot.manage import read_saved_pages
+  with tempfile.TemporaryDirectory() as d:
+   base=Path(d);root=base/'first';book=root/'manga/a';page=book/'source/Chapter 1/001.png'
+   page.parent.mkdir(parents=True);Image.new('L',(20,30)).save(page)
+   store=LocalStore(base/'drive');Snapshot(root,store).checkpoint()
+   snapshot=Snapshot(base/'runner',store,lazy_source=True);snapshot.restore()
+   item={'id':'a','directory':str(snapshot.root/'manga/a'),'state':'waiting_upscale'}
+   with patch('manga_bot.routing.Router'),patch('manga_bot.stages.read_batch') as reader:
+    read_saved_pages({}, {'manga':[item]},snapshot,time.time()+300)
+   reader.assert_called_once()
+   self.assertEqual(reader.call_args.args[2][0]['page_id'],'ch1-p001')
+   self.assertEqual(item['state'],'waiting_upscale')
+   self.assertFalse((snapshot.root/'manga/a/job/inventory.json').exists())
  def test_rejected_reader_batch_is_recorded_without_retrying_images(self):
   from manga_bot.credentials import ContentRejected
   from manga_bot.stages import read_batch

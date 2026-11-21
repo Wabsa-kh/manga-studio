@@ -9,7 +9,9 @@ def output():
  Path('worker-report.json').write_text(json.dumps(checks,indent=2))
  if summary:
   with open(summary,'a',encoding='utf-8') as f:f.write('## Worker connection check\n\n'+''.join(f'- {k}: {v}\n' for k,v in checks.items()))
-if os.environ.get('DRY_RUN','').lower()=='true' or not (checks['production_ready'] or checks['publishing_ready']):
+cfg['_read_only']=os.environ.get('MANGA_READ_ONLY')=='1'
+ready=(checks['storage_ready'] and checks['gemini_key_configured']) if cfg['_read_only'] else (checks['production_ready'] or checks['publishing_ready'])
+if os.environ.get('DRY_RUN','').lower()=='true' or not ready:
  checks['state']='waiting_for_connections';output();print('Connection check completed; no production calls made.')
 else:
  cfg['_publish_only']=not checks['production_ready']
