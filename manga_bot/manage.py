@@ -181,13 +181,15 @@ def worker(cfg,url=None,retry_id=None):
           pending=failure if isinstance(failure,Pending) else None
           if not failure and item.get('state')=='waiting':pending=Pending(item['reason'],item.get('resume_epoch'))
           if pending:
-           speech_receipt=scope_path.parent/'speech'/'complete.json'
-           if not speech_receipt.exists() and time.time()<deadline-120:
-            from .part_audio import prepare
-            status(jobroot,api,'generating_narration_during_gpu_wait',active_part=scope['id'])
-            try:prepare(api,jobroot,scope,jobcfg)
-            except Pending:pass
+           until=min(deadline-120,pending.resume)
+           while time.time()<until:
+            try:advanced=turn(jobroot,inventory,api,jobcfg,text_only=True,prepare_audio=True)
+            except Pending as model_wait:
+             snapshot.checkpoint()
+             if not short_wait(model_wait,cfg,until,lambda:None):break
+             continue
             snapshot.checkpoint()
+            if not advanced:break
            raise pending
           if failure:raise failure
           raise Attention(item.get('reason') or 'Missing part upscale receipt')

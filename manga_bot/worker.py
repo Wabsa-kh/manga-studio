@@ -31,20 +31,34 @@ def status(root,api,state,**fields):
   r=read(p);text+=f"- [{p.parent.name}: {r['minutes']:.1f} minutes]({r['path']})\n"
  text+='\nProvider usage is recorded in status.json and individual request receipts. No paid fallback is configured. Local electricity/server costs are not measured.\n';(root/'REPORT.md').write_text(text,encoding='utf-8');return data
 
-def turn(root,inv,api,config,text_only=False):
+def read_unit(root,api,config,unit):
+ from concurrent.futures import ThreadPoolExecutor,as_completed
+ size=config.get('reader_batch_pages',2)
+ with ThreadPoolExecutor(max_workers=2) as pool:
+  futures=[pool.submit(read_batch,api,root,unit['pages'][i:i+size]) for i in range(0,len(unit['pages']),size)]
+  failures=[]
+  for future in as_completed(futures):
+   try:future.result()
+   except (Pending,Attention) as exc:failures.append(exc)
+   status(root,api,'reading_and_writing',active_unit=unit['id'])
+  if failures:
+   fatal=next((e for e in failures if isinstance(e,Attention)),None)
+   raise fatal or min(failures,key=lambda e:e.resume)
+
+def turn(root,inv,api,config,text_only=False,prepare_audio=False):
  if shutil.disk_usage(root).free<config.get('minimum_free_gb',4)*1024**3:raise Attention('Less than configured free disk space remains')
  # First finish any independently runnable media from earlier writing work.
  waits=[]
  batching=config.get('part_audio_batching',False);minimum,maximum=config.get('part_minutes',[45,60]);wpm=config.get('words_per_minute',207)
+ if batching and (not text_only or prepare_audio):
+  from .part_audio import prepare
+  for scope in sorted((root/'parts').glob('*/scope.json')):
+   if (scope.parent/'speech/complete.json').exists():continue
+   try:prepare(api,root,read(scope),config)
+   except Pending as exc:waits.append(exc)
+   break
  if not text_only:
   from .media import unit_video,assemble
-  if batching:
-   from .part_audio import prepare
-   for scope in sorted((root/'parts').glob('*/scope.json')):
-    if not (scope.parent/'speech/complete.json').exists():
-     try:prepare(api,root,read(scope),config)
-     except Pending as exc:waits.append(exc)
-     break
   for u in inv['units']:
    draft=read(root/'units'/u['id']/'draft.json')
    if draft and not (root/'units'/u['id']/'video.json').exists() and (not batching or (root/'units'/u['id']/'audio-prepared.json').exists()):
@@ -83,20 +97,16 @@ def turn(root,inv,api,config,text_only=False):
   unrendered=sum(not (root/'units'/d['chapter']/'video.json').exists() for d in previous)
   if not text_only and (batching or unrendered>=config.get('prefetch_units',2)) and waits:raise min(waits,key=lambda e:e.resume)
   status(root,api,'reading_and_writing',active_unit=missing['id'])
-  from concurrent.futures import ThreadPoolExecutor,as_completed
-  size=config.get('reader_batch_pages',2)
-  with ThreadPoolExecutor(max_workers=2) as pool:
-   futures=[pool.submit(read_batch,api,root,missing['pages'][i:i+size]) for i in range(0,len(missing['pages']),size)]
-   failures=[]
-   for future in as_completed(futures):
-    try:future.result()
-    except (Pending,Attention) as exc:failures.append(exc)
-    status(root,api,'reading_and_writing',active_unit=missing['id'])
-   if failures:
-    fatal=next((e for e in failures if isinstance(e,Attention)),None)
-    raise fatal or min(failures,key=lambda e:e.resume)
+  read_unit(root,api,config,missing)
   try:write_unit(api,root,missing,previous);return True
-  except Pending as exc:waits.append(exc)
+  except Pending as exc:
+   waits.append(exc)
+   following=inv['units'][inv['units'].index(missing)+1:]
+   ahead=next((unit for unit in following if any(not (root/'pages'/(p['page_id']+'.json')).exists() for p in unit['pages'])),None)
+   if ahead:
+    try:read_unit(root,api,config,ahead)
+    except Pending as reader_wait:waits.append(reader_wait)
+    else:return True
  if waits:raise min(waits,key=lambda e:e.resume)
  if not missing:
   status(root,api,'text_complete' if text_only else 'complete');return False
