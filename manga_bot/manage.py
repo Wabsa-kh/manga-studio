@@ -111,15 +111,16 @@ def read_saved_pages(cfg,library,snapshot,deadline):
   for start in range(0,len(pages),size):
    if time.time()>=deadline-120:return
    batch=pages[start:start+size]
-   try:
-    try:read_batch(api,job,batch)
-    except Pending as exc:
-     if not short_wait(exc,cfg,deadline,snapshot.checkpoint):return
+   while time.time()<deadline-120:
+    try:
      read_batch(api,job,batch)
-   except Pending:return
-   finally:
-    if (job/'inventory.json').exists():status(job,api,'reading_saved_pages')
-    snapshot.checkpoint()
+    except Pending as exc:
+     snapshot.checkpoint()
+     if not wait_for_resume({'resume_epoch':exc.resume},cfg,deadline):return
+    else:
+     if (job/'inventory.json').exists():status(job,api,'reading_saved_pages')
+     snapshot.checkpoint()
+     break
 
 def worker(cfg,url=None,retry_id=None):
  root=Path(cfg['state_root']);root.mkdir(parents=True,exist_ok=True);backend=cfg['storage']['backend']
