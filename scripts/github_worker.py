@@ -21,6 +21,7 @@ else:
 if os.environ.get('COLAB_PROFILE','primary')!='primary' and not checks['colab_credentials_configured'] and cfg['_phase']!='prepare':
  ready=False
  checks['requested_colab_profile_connected']=False
+checks['phase']='read' if cfg['_read_only'] else cfg['_phase']
 if os.environ.get('DRY_RUN','').lower()=='true' or not ready:
  checks['state']='waiting_for_connections';output();print('Connection check completed; no production calls made.')
 else:
@@ -29,6 +30,7 @@ else:
  import tempfile
  with tempfile.TemporaryFile(mode='w+',encoding='utf-8') as log:
   cfg['_console_log']=log
+  cfg['_public_progress']=lambda message: print(message,file=sys.__stdout__,flush=True)
   try:
    with contextlib.redirect_stdout(log),contextlib.redirect_stderr(log):worker(cfg,os.environ.get('MANGA_URL') or None,os.environ.get('MANGA_RETRY_ID') or None)
    checks['state']='run_finished';output();print('Run finished. Detailed reports and receipts are in private Drive storage.')

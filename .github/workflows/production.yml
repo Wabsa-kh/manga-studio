@@ -1,7 +1,9 @@
 name: Daily manga worker
 on:
   schedule:
-    - cron: '17 8 * * *'
+    - cron: '47 4 * * *'
+    - cron: '47 10 * * *'
+    - cron: '47 16 * * *'
   workflow_dispatch:
     inputs:
       manga_url:
@@ -33,6 +35,7 @@ permissions:
   contents: read
 jobs:
   worker:
+    name: ${{ inputs.phase || (github.event.schedule == '47 4 * * *' && 'prepare') || (github.event.schedule == '47 16 * * *' && 'download') || 'all' }}
     if: github.repository == 'Wabsa-kh/manga-studio' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 330
@@ -40,7 +43,7 @@ jobs:
       MANGA_STORE_REMOTE: ${{ vars.MANGA_STORE_REMOTE }}
       MANGA_URL: ${{ inputs.manga_url }}
       MANGA_RETRY_ID: ${{ inputs.retry_manga_id }}
-      MANGA_PHASE: ${{ inputs.phase || 'all' }}
+      MANGA_PHASE: ${{ inputs.phase || (github.event.schedule == '47 4 * * *' && 'prepare') || (github.event.schedule == '47 16 * * *' && 'download') || 'all' }}
       DRY_RUN: ${{ inputs.dry_run }}
       PYTHONUNBUFFERED: '1'
     steps:
@@ -55,8 +58,11 @@ jobs:
         run: |
           sudo sed -i -E 's#https?://[A-Za-z0-9.-]*archive.ubuntu.com/ubuntu/?#https://archive.ubuntu.com/ubuntu/#g' /etc/apt/sources.list.d/ubuntu.sources
           python scripts/install_media.py ffmpeg rclone
-          python -m pip install --disable-pip-version-check --timeout 30 --retries 2 -r manga_bot/requirements.txt google-colab-cli==0.8.0
-          timeout 30s colab exec --help
+          python -m pip install --disable-pip-version-check --timeout 30 --retries 2 -r manga_bot/requirements.txt
+          if [ "$MANGA_PHASE" != prepare ]; then
+            python -m pip install --disable-pip-version-check --timeout 30 --retries 2 google-colab-cli==0.8.0
+            timeout 30s colab exec --help
+          fi
           python scripts/check_config.py
       - name: Check configuration and process bounded work
         env:
@@ -69,7 +75,7 @@ jobs:
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         run: python scripts/github_worker.py
       - name: Release managed Colab sessions after success or cancellation
-        if: always()
+        if: always() && env.MANGA_PHASE != 'prepare'
         timeout-minutes: 5
         env:
           COLAB_PROFILE: ${{ inputs.colab_profile || 'primary' }}

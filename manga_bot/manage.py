@@ -72,7 +72,7 @@ def story_job(cfg,item,snapshot):
   snapshot.active_images=()
  from .worker import initialize
  from .routing import Router as Google
- jobcfg={**{k:v for k,v in cfg.items() if k!='_console_log'},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state'),'part_minutes':item.get('part_minutes',cfg.get('part_minutes',[45,60]))};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint,quota_limits=cfg.get('quota_limits'));api.assets=snapshot
+ jobcfg={**{k:v for k,v in cfg.items() if k not in ('_console_log','_public_progress')},'title':item['title'],'source':item['source'],'upscaled_source':item.get('upscaled_source'),'output':str(directory/'job'),'provider_state':str(root/'provider-state'),'part_minutes':item.get('part_minutes',cfg.get('part_minutes',[45,60]))};jobroot,inventory=initialize(jobcfg);api=Google(jobroot,root/'provider-state',cfg.get('providers'),snapshot.checkpoint,quota_limits=cfg.get('quota_limits'));api.assets=snapshot
  return jobroot,inventory,api,jobcfg
 
 def draft_during_gpu_wait(cfg,item,snapshot,until):
@@ -129,10 +129,22 @@ def worker(cfg,url=None,retry_id=None):
  snapshot.lazy_source=cfg.get('download',{}).get('backend')=='colab'
  if cfg.get('_console_log'):
   original_checkpoint=snapshot.checkpoint
+  last_progress=[0]
   def checkpoint_with_console():
    log=cfg['_console_log'];log.flush();position=log.tell();log.seek(0);content=log.read();log.seek(position)
    folder=root/'diagnostics';folder.mkdir(parents=True,exist_ok=True);(folder/'latest-run.log').write_text(content[-1024*1024:],encoding='utf-8')
-   return original_checkpoint()
+   manifest=original_checkpoint()
+   progress=cfg.get('_public_progress')
+   now=time.monotonic()
+   if progress and now-last_progress[0]>=90:
+    from collections import Counter
+    jobs=read(root/'library.json',{}).get('manga',[])
+    states=Counter(item.get('state') for item in jobs)
+    allowed=('downloading','waiting_download','colab_downloading','waiting_upscale','upscaling','ready_for_render','producing','waiting','needs_review','complete')
+    totals=' '.join(f'{state}={states[state]}' for state in allowed if states[state])
+    progress(f"Drive checkpoint saved. Phase: {'read' if cfg.get('_read_only') else cfg.get('_phase','all')}. {totals}")
+    last_progress[0]=now
+   return manifest
   snapshot.checkpoint=checkpoint_with_console
  try:
   with Singleton(root.parent/'manga-manager.lock'):
