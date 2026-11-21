@@ -129,3 +129,26 @@ def write_unit(api,root,unit,previous):
  disagreements=[dict(page_id=c['page_id'],reader_story=readings[pids.index(c['page_id'])]['story_content_present'],writer_decision=c['decision'],reason=c['reason']) for c in output['coverage'] if c['decision']=='metadata' and readings[pids.index(c['page_id'])]['story_content_present']]
  draft={**output,'omitted_page_ids':omitted,'source_aliases':aliases,'classification_disagreements':disagreements,'chapter':unit['id'],'chapters':unit['chapters'],'beats':beats,'text':text,'words':len(text.split()),'text_sha256':digest(text),'manual_prose_edits':False,'manual_source_edits':False,'evaluation_only':True,'model':response['config']['model']}
  save(target/'draft.json',draft);event(root,'draft_complete',unit=unit['id'],words=draft['words'],boundary=draft['boundary'],manual_content_edits=0);return draft
+
+CONTINUITY_SCHEMA=obj(issues=arr(obj(unit_id=S, related_unit_id=S,
+                                  category={'type':'string','enum':['identity','timeline','transition','dialogue','repetition']},
+                                  evidence=S, suggestion=S)))
+
+def audit_continuity(api,root,drafts):
+ """A read-only, whole-book editorial check against the locked drafts."""
+ sources=[dict(unit_id=d['chapter'],chapters=d['chapters'],text=d['text'],handoff=d['handoff']) for d in drafts]
+ signature=digest(sources);path=root/'continuity-review.json'
+ if read(path,{}).get('signature')==signature:return
+ prompt="""Review this complete narration in story presentation order. Identify concrete continuity
+ issues in names, identities, timeline, flashback framing, pronoun references, chapter handoffs,
+ and repetition. Cite the unit IDs and a short literal excerpt from the supplied drafts for each
+ issue. Intentional gaps and delayed reveals are valid. Never infer what the manga omitted.
+ Return practical review suggestions only. No rewritten narration."""
+ result=api.generate('writer',prompt,{'units':sources},[],CONTINUITY_SCHEMA,8192,'MEDIUM')
+ out=result.get('output')
+ if not result.get('complete') or schema_errors(CONTINUITY_SCHEMA,out):
+  raise Attention('Book continuity review did not validate')
+ known={d['chapter'] for d in drafts}
+ issues=[issue for issue in out['issues'] if issue['unit_id'] in known and issue['related_unit_id'] in known]
+ save(path,dict(signature=signature,issues=issues,model=result['config']['model']))
+ event(root,'continuity_review_saved',units=len(drafts),issues=len(issues))

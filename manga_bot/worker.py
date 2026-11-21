@@ -91,7 +91,7 @@ def turn(root,inv,api,config,text_only=False,prepare_audio=False):
   pending.append({**d,**({'duration_minutes':video['duration']/60} if video else {})})
  n=choose_part(pending,minimum,maximum,wpm,at_end=missing is None and (text_only or batching or len(pending)+len(covered)==len(previous)))
  if n:
-  selected=pending[:n];part=dict(id=f'part-{part_count+1:03}',units=[dict(id=d['chapter'],chapters=d['chapters'],text_sha256=d['text_sha256'],words=d['words']) for d in selected],target_minutes=[minimum,maximum],estimated_minutes=sum(d['words'] for d in selected)/wpm,boundary=selected[-1]['boundary'],frozen_utc=utc());save(root/'parts'/part['id']/'scope.json',part);event(root,'part_scope_frozen',**part);return True
+  selected=pending[:n];part=dict(id=f'part-{part_count+1:03}',units=[dict(id=d['chapter'],chapters=d['chapters'],text_sha256=d['text_sha256'],words=d['words']) for d in selected],target_minutes=[minimum,maximum],render_profile=config.get('render',{}),estimated_minutes=sum(d['words'] for d in selected)/wpm,boundary=selected[-1]['boundary'],frozen_utc=utc());save(root/'parts'/part['id']/'scope.json',part);event(root,'part_scope_frozen',**part);return True
  if missing:
   # Bound ahead-of-speech work, so a quota hold cannot accumulate the whole book.
   unrendered=sum(not (root/'units'/d['chapter']/'video.json').exists() for d in previous)
@@ -109,6 +109,10 @@ def turn(root,inv,api,config,text_only=False,prepare_audio=False):
     else:return True
  if waits:raise min(waits,key=lambda e:e.resume)
  if not missing:
+  if previous and config.get('continuity_review'):
+   from .stages import audit_continuity
+   try:audit_continuity(api,root,previous)
+   except Attention as exc:event(root,'continuity_review_needs_attention',reason=str(exc))
   status(root,api,'text_complete' if text_only else 'complete');return False
  return True
 

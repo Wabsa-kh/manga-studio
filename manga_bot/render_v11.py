@@ -77,12 +77,13 @@ def render(data,audio,target):
  # Fully decode the output and independently verify actual frame count.
  ff(['-i',final,'-f','null','-']);info=__import__('json').loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-of','json',str(final)]));v=next(s for s in info['streams'] if s['codec_type']=='video')
  if int(v['nb_frames'])!=frames:raise Attention('Subpixel render frame count mismatch')
- result=dict(path=str(final.resolve()),sha256=sha(final),signature=signature,duration=duration,frames=frames,fps=cfg['fps'],render_seconds=round(time.monotonic()-start,2),technical_qa=True,publication_approved=False);save(target/'complete.json',result);save(target/'render-progress.json',dict(frame=frames,total_frames=frames,percent=100,complete=True))
+ if (v['width'],v['height'])!=(cfg['width'],cfg['height']):raise Attention('Subpixel render dimensions mismatch')
+ result=dict(path=str(final.resolve()),sha256=sha(final),signature=signature,duration=duration,frames=frames,fps=cfg['fps'],width=v['width'],height=v['height'],render_seconds=round(time.monotonic()-start,2),technical_qa=True,publication_approved=False);save(target/'complete.json',result);save(target/'render-progress.json',dict(frame=frames,total_frames=frames,percent=100,complete=True))
  if silent.exists():silent.unlink()
  return result
 
 def prepare(root,unit_id,overrides=None,seconds=None):
- root=Path(root);unit=next(u for u in read(root/'inventory.json')['units'] if u['id']==unit_id);folder=root/'units'/unit_id;draft=read(folder/'draft.json');timing=read(folder/'speech-timing.json');index=read(folder/'source-ledger.json')['index'];pages={p['page_id']:p for p in unit['pages']};layouts={pid:read(root/'visual-layout'/(pid+'.json'),{}) for pid in pages}
+ root=Path(root);unit=next(u for u in read(root/'inventory.json')['units'] if u['id']==unit_id);folder=root/'units'/unit_id;draft=read(folder/'draft.json');timing=read(folder/'speech-timing.json');index=read(folder/'source-ledger.json')['index'];pages={p['page_id']:p for p in unit['pages'] if p['page_id'] not in draft.get('omitted_page_ids',[])};layouts={pid:read(root/'visual-layout'/(pid+'.json'),{}) for pid in pages}
  for pid,layout in layouts.items():
   if layout and layout.get('source_sha256')!=pages[pid]['sha256']:raise Attention('Visual anchors belong to a different original page')
  cfg=read(root/'config.json',{});upscaled=cfg.get('upscaled_source')
@@ -93,7 +94,12 @@ def prepare(root,unit_id,overrides=None,seconds=None):
    out=Path(upscaled)/Path(page['path']).resolve().relative_to(original_root).with_suffix('.png');metadata=read(out.with_suffix('.upscale.json'));actual=verify(page['path'],out)
    if not actual or actual!=metadata:raise Attention('Missing or invalid upscale for '+pid)
    pages[pid]={**page,'path':str(out),'sha256':actual['output_sha256'],'size':actual['size'],'original_sha256':page['sha256']}
- focus=read(folder/'focus-timing.json',{});data=plan(draft['beats'],timing['cues'],index,pages,layouts,overrides,focus.get('cues',{}))
+ page_panels={}
+ for pid in {beat['page_id'] for beat in draft['beats']}:
+  reading=read(root/'pages'/(pid+'.json'),{})
+  source_pages=reading.get('reading',{}).get('pages',[])
+  if source_pages:page_panels[pid]=[panel['region'] for panel in source_pages[0]['panels']]
+ focus=read(folder/'focus-timing.json',{});data=plan(draft['beats'],timing['cues'],index,pages,layouts,overrides,focus.get('cues',{}),page_panels)
  if seconds:
   data['duration']=min(data['duration'],seconds);data['shots']=[s for s in data['shots'] if s['start']<data['duration']]
   data['shots'][-1]['end']=data['duration'];data['shots'][-1]['duration']=data['duration']-data['shots'][-1]['start']

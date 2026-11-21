@@ -100,7 +100,7 @@ class Google:
   except (requests.RequestException,ValueError) as exc:
    result.update(status='started_unknown',reason=type(exc).__name__,retry_epoch=time.time()+3600,seconds=round(time.monotonic()-start,2));save(receipt,result);self.budget.settle(ident,'unknown');raise Pending('Unknown transport outcome; retained reservation and bounded delayed recovery',result['retry_epoch'])
  def tts(self,text,folder):
-  model=self.models['tts'];config=dict(model=model,voice='Charon',text=text,style='Clear, natural third-person storytelling. Neutral English, simple conversational delivery, no theatrical exaggeration.');folder=Path(folder);folder.mkdir(parents=True,exist_ok=True);audio=folder/'voice.wav';receipt=folder/'result.json';old=read(receipt);signature=digest(config)
+  model=self.models['tts'];config=dict(model=model,voice='Charon',text=text,style='Clear, natural third-person storytelling in neutral English. Keep one narrator voice throughout. Keep the same pitch range, vocal placement, accent, intensity and mic distance across the entire passage. Read every character in the same narrator voice, including dialogue. Use steady conversational delivery with no character impressions or theatrical emphasis.');folder=Path(folder);folder.mkdir(parents=True,exist_ok=True);audio=folder/'voice.wav';receipt=folder/'result.json';old=read(receipt);signature=digest(config)
   if hasattr(self,'assets'):self.assets.ensure_path(audio,missing_ok=not bool(old and old.get('complete')))
   if old and old.get('complete') and old.get('signature')==signature and audio.exists() and sha(audio)==old['audio_sha256']:return old
   if old and old.get('retry_epoch',0)>time.time() and not self.credential_retry(old):raise Pending('Speech request cooldown',old['retry_epoch'])

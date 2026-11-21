@@ -16,8 +16,9 @@
   "reader_batch_pages": 2,
   "unit_pages": 40,
   "prefetch_units": 2,
-  "tts_batch_words": 2200,
+  "tts_batch_words": 1100,
   "part_audio_batching": true,
+  "continuity_review": true,
   "minimum_free_gb": 4,
   "storage": {
     "backend": "rclone",
@@ -95,8 +96,8 @@
   },
   "render": {
     "engine": "subpixel_v11",
-    "width": 1280,
-    "height": 720,
+    "width": 1920,
+    "height": 1080,
     "fps": 30,
     "zoom_relax": 0.94,
     "move_seconds": 0.62,

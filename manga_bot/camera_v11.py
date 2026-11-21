@@ -23,6 +23,10 @@ def policy(overrides=None):
 
 def ease(t):t=max(0,min(1,t));return t*t*t*(t*(t*6-15)+10)
 
+def bounds(boxes):
+ x=min(box[0] for box in boxes);y=min(box[1] for box in boxes)
+ return [x,y,max(box[0]+box[2] for box in boxes)-x,max(box[1]+box[3] for box in boxes)-y]
+
 def pose(box,panel,page,cfg):
  w,h=page['size'];pw=w/h*1080
  # About six percent less magnification than the old cover floor. White paper
@@ -32,7 +36,12 @@ def pose(box,panel,page,cfg):
  cx=box[0]+box[2]/2;cy=box[1]+box[3]/2
  # Prioritize the body/face group, with a small pull toward its panel context.
  cx=.85*cx+.15*(panel[0]+panel[2]/2);cy=.85*cy+.15*(panel[1]+panel[3]/2)
- hx=960/(pw*z);hy=.5/z;cx=max(min(.5,hx),min(max(.5,1-hx),cx));cy=max(hy,min(1-hy,cy))
+ margin=.07
+ z=min(z,1920/(pw*max(.001,box[2])*(1+2*margin)),1/(max(.001,box[3])*(1+2*margin)))
+ hx=960/(pw*z);hy=.5/z
+ x,y,w,h=box
+ cx=max(x+w*(1+margin)-hx,min(x-w*margin+hx,cx))
+ cy=max(y+h*(1+margin)-hy,min(y-h*margin+hy,cy))
  return dict(z=z,x=z*pw*(.5-cx),y=z*1080*(.5-cy))
 
 def subject_for(ref,index,layouts):
@@ -46,8 +55,17 @@ def subject_for(ref,index,layouts):
  # guessing a face location from a speech balloon.
  return item['panel'],'panel','panel_context_fallback'
 
-def plan(beats,timings,index,pages,layouts,overrides=None,focus_cues=None):
+def plan(beats,timings,index,pages,layouts,overrides=None,focus_cues=None,page_panels=None):
  cfg=policy(overrides);clock={c['beat_id']:c for c in timings};shots=[]
+ last_beat={beat['page_id']:beat['id'] for beat in beats}
+ covered={}
+ def visible(box,frame):
+  x,y,w,h=box;a,b,c,d=frame
+  return a<=x and b<=y and a+c>=x+w and b+d>=y+h
+ def viewport(p,page):
+  pw=page['size'][0]/page['size'][1]*1080
+  z=p['z']; x=.5-p['x']/(z*pw);y=.5-p['y']/(z*1080)
+  return [x-960/(z*pw),y-.5/z,1920/(z*pw),1/z]
  for beat in beats:
   cue=clock[beat['id']];pid=beat['page_id'];page=pages[pid];duration=cue['end']-cue['start'];targets=[]
   refs=sorted([r for r in beat['source_ids'] if index[r]['page_id']==pid],key=lambda r:index[r]['order'])
@@ -74,9 +92,23 @@ def plan(beats,timings,index,pages,layouts,overrides=None,focus_cues=None):
    at=local if i==0 else max(scheduled[-1][0]+cfg['minimum_hold'],t.get('narration_at',cue['start']+i*slot)-shot['start']-cfg['move_seconds']*.75)
    if i and at>cue['end']-shot['start']-cfg['minimum_hold']*.6:continue
    scheduled.append((at,t))
+  prior=covered.setdefault(pid,[])
+  if beat['id']==last_beat[pid] and page_panels and page_panels.get(pid):
+   frames=prior+[viewport(t['pose'],page) for _,t in scheduled]
+   missing=[box for box in page_panels[pid] if not any(visible(box,frame) for frame in frames)]
+   if missing:
+    at,last=scheduled[-1]
+    # Retain the final main subject in the wider view when the time is short.
+    context=bounds([last['subject_box'],*missing])
+    wide={**last,'pose':pose(context,context,page,cfg),'subject_box':context,'basis':'panel_coverage'}
+    if cue['end']-shot['start']-at>=2*cfg['minimum_hold']:
+     scheduled.append((cue['end']-shot['start']-cfg['minimum_hold'],wide))
+    else:scheduled[-1]=(at,wide)
+  prior.extend(viewport(t['pose'],page) for _,t in scheduled)
   for i,(at,t) in enumerate(scheduled):
    until=scheduled[i+1][0] if i+1<len(scheduled) else cue['end']-shot['start'];old=sample(shot,at,cfg,drift=False);length=0 if new and i==0 else min(cfg['move_seconds'],(until-at)*.24)
    if length>0:shot['moves'].append(dict(at=at,duration=length,**{'from':old,'to':t['pose']},ease='minimum_jerk',role='panel_transfer'))
+   if new and i==0:shot['initial']=t['pose']
    shot['targets'].append({**t,'at':at,'settled_at':at+length,'until':until})
   shot['cues'].append(dict(beat_id=beat['id'],start=cue['start'],end=cue['end'],source_ids=refs))
  for s in shots:

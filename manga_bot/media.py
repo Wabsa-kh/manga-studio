@@ -103,7 +103,15 @@ def subpixel_video(api,root,unit,draft,cfg):
  if cfg.get('upscaled_source') and hasattr(api,'assets'):
   for page in unit['pages']:
    out=Path(cfg['upscaled_source'])/Path(page['path']).resolve().relative_to(Path(cfg['source']).resolve()).with_suffix('.png');api.assets.ensure_path(out)
- make(api,root,unit['id']);overrides={k:v for k,v in cfg['render'].items() if k!='engine'};data,audio=prepare(root,unit['id'],overrides);result=render_with_read_ahead(api,root,data,audio,target,render)
+ make(api,root,unit['id'])
+ profile=cfg['render']
+ for scope_path in (root/'parts').glob('*/scope.json'):
+  scope=read(scope_path)
+  if any(item['id']==unit['id'] for item in scope['units']):
+   profile=scope.get('render_profile',{**profile,'width':1280,'height':720})
+   break
+ overrides={k:v for k,v in profile.items() if k!='engine'}
+ data,audio=prepare(root,unit['id'],overrides);result=render_with_read_ahead(api,root,data,audio,target,render)
  if not (target/'qa-manifest.json').exists() or read(target/'qa-manifest.json').get('video_sha256')!=result['sha256']:inspect(target)
  editable(target,data,audio);alias=target/'chapter.mp4'
  if alias.exists() and sha(alias)!=result['sha256']:alias.unlink()

@@ -24,6 +24,19 @@ class VisualTests(unittest.TestCase):
   pages,index,beats,timing=self.fixture();anchor=dict(subject_box=[.1,.52,.2,.15],panel_box=index['s1']['panel'],confidence=.95,kind='character',source_ids=['s1']);layouts={'p1':dict(anchors=[anchor])};beats[0]['source_ids']=['s1'];s=plan(beats,timing,index,pages,layouts)['shots'][0];self.assertEqual(s['targets'][0]['basis'],'vision_subject');self.assertEqual(s['targets'][0]['subject_box'],anchor['subject_box'])
  def test_spoken_phrase_cue_controls_transfer_time(self):
   pages,index,beats,timing=self.fixture();a=dict(subject_box=[.1,.1,.2,.15],panel_box=index['s0']['panel'],kind='character',source_ids=['s0']);b=dict(subject_box=[.1,.8,.2,.15],panel_box=index['s2']['panel'],kind='action',source_ids=['s2']);focus={'b1':[dict(anchor=a,at=0,phrase='First event'),dict(anchor=b,at=8,phrase='Later event')]};s=plan(beats,timing,index,pages,{},focus_cues=focus)['shots'][0];self.assertAlmostEqual(s['moves'][0]['at'],8-.62*.75);self.assertTrue(all(t['basis']=='spoken_phrase_subject' for t in s['targets']))
+ def test_short_beat_widens_to_include_unmentioned_panel_and_subject(self):
+  pages,index,beats,timing=self.fixture()
+  beats[0]['source_ids']=['s1'];timing[0]['end']=3
+  anchor=dict(subject_box=[.08,.51,.26,.17],panel_box=index['s1']['panel'],confidence=.95,kind='character',source_ids=['s1'])
+  extra=[.05,.09,.9,.22]
+  data=plan(beats,timing,index,pages,{'p1':dict(anchors=[anchor])},page_panels={'p1':[extra,index['s1']['panel']]})
+  target=data['shots'][0]['targets'][0]
+  self.assertEqual(target['basis'],'panel_coverage')
+  projection=matrix(pages['p1']['size'],target['pose'],1920,1080)
+  for x,y,w,h in (extra,anchor['subject_box']):
+   for px,py in ((x,y),(x+w,y+h)):
+    vx,vy,_=projection@np.array([px*900,py*1300,1])
+    self.assertTrue(0<vx<1920 and 0<vy<1080)
  def test_paper_color_ignores_border_ink(self):
   im=Image.new('RGB',(100,100),(248,247,244));im.putpixel((0,0),(0,0,0));self.assertEqual(list(paper_color(im)),[248,247,244])
  def test_projective_frame_is_deterministic_and_seekable(self):

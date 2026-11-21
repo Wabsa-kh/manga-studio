@@ -6,7 +6,7 @@ from tts_jobs import chunks
 import series_av_v9 as av
 
 def prepare(api,root,part,config):
- root=Path(root);folder=root/'parts'/part['id']/'speech';folder.mkdir(parents=True,exist_ok=True);drafts=[read(root/'units'/u['id']/'draft.json') for u in part['units']];beats=[b for d in drafts for b in d['beats']];groups=chunks(beats,config.get('tts_batch_words',2200));scope=dict(texts=[d['text_sha256'] for d in drafts],groups=[[b['id'] for b in g] for g in groups],max_words=config.get('tts_batch_words',2200));old=read(folder/'scope.json')
+ root=Path(root);folder=root/'parts'/part['id']/'speech';folder.mkdir(parents=True,exist_ok=True);drafts=[read(root/'units'/u['id']/'draft.json') for u in part['units']];beats=[b for d in drafts for b in d['beats']];old=read(folder/'scope.json');limit=old['max_words'] if old else config.get('tts_batch_words',2200);groups=chunks(beats,limit);scope=dict(texts=[d['text_sha256'] for d in drafts],groups=[[b['id'] for b in g] for g in groups],max_words=limit)
  if old and old!=scope:raise Attention('Frozen part speech scope changed')
  save(folder/'scope.json',scope);fragments={d['chapter']:[] for d in drafts};names=list(dict.fromkeys(e['name'] for d in drafts for e in d['entities'] if e['name']))
  for i,group in enumerate(groups):
