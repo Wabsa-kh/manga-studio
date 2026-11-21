@@ -49,7 +49,10 @@ def capture(api,root,pages):
   if len(missing)>1:
    for p in missing:capture(api,root,[p])
    return
-  raise Attention('Visual layout failed validation: '+str(errors[:3]))
+  p=missing[0]
+  save(root/'visual-layout'/(p['page_id']+'.json'),dict(page_id=p['page_id'],anchors=[],source_sha256=p['sha256'],fallback='panel_geometry',validation_errors=errors[:3]))
+  event(root,'visual_layout_fallback',page=p['page_id'])
+  return
  for p,layout in zip(missing,data['pages']):
   for a in layout['anchors']:
    b=a['subject_box'];a['subject_box']=[b['left']/1000,b['top']/1000,(b['right']-b['left'])/1000,(b['bottom']-b['top'])/1000];a['panel_box']=panel_boxes[a['panel_id']]

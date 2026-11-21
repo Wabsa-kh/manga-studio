@@ -1,7 +1,7 @@
 """Measured speech, source-linked cameras and reusable part assembly."""
 import math,json,subprocess,wave,shutil,xml.etree.ElementTree as ET
 from pathlib import Path
-from .core import read,save,sha,digest,event,Attention
+from .core import read,save,sha,digest,event,Attention,Pending
 from camera_engine import align_beats
 from smooth_camera import plan_smooth
 import series_av_v9 as av
@@ -73,6 +73,23 @@ def unit_video(api,root,unit,draft):
  if cfg.get('render',{}).get('engine')=='subpixel_v11':return subpixel_video(api,root,unit,draft,cfg)
  return legacy_unit_video(api,root,unit,draft)
 
+def render_with_read_ahead(api,root,data,audio,target,render):
+ """Use spare model capacity while the CPU renders a verified unit."""
+ if not hasattr(api,'assets'):return render(data,audio,target)
+ from concurrent.futures import ThreadPoolExecutor
+ from .stages import read_batch
+ cfg=read(root/'config.json',{})
+ inventory=read(root/'inventory.json',{})
+ pages=[page for page in inventory.get('pages',[]) if not (root/'pages'/(page['page_id']+'.json')).exists()]
+ batch=pages[:cfg.get('reader_batch_pages',2)]
+ if not batch:return render(data,audio,target)
+ with ThreadPoolExecutor(max_workers=1) as pool:
+  reader=pool.submit(read_batch,api,root,batch)
+  result=render(data,audio,target)
+  try:reader.result()
+  except (Pending,Attention) as exc:event(root,'render_read_ahead_deferred',reason=type(exc).__name__)
+ return result
+
 def subpixel_video(api,root,unit,draft,cfg):
  for page in unit['pages']:
   if sha(page['path'])!=page['sha256']:raise Attention('Original page changed after inventory: '+page['page_id'])
@@ -86,7 +103,7 @@ def subpixel_video(api,root,unit,draft,cfg):
  if cfg.get('upscaled_source') and hasattr(api,'assets'):
   for page in unit['pages']:
    out=Path(cfg['upscaled_source'])/Path(page['path']).resolve().relative_to(Path(cfg['source']).resolve()).with_suffix('.png');api.assets.ensure_path(out)
- make(api,root,unit['id']);overrides={k:v for k,v in cfg['render'].items() if k!='engine'};data,audio=prepare(root,unit['id'],overrides);result=render(data,audio,target)
+ make(api,root,unit['id']);overrides={k:v for k,v in cfg['render'].items() if k!='engine'};data,audio=prepare(root,unit['id'],overrides);result=render_with_read_ahead(api,root,data,audio,target,render)
  if not (target/'qa-manifest.json').exists() or read(target/'qa-manifest.json').get('video_sha256')!=result['sha256']:inspect(target)
  editable(target,data,audio);alias=target/'chapter.mp4'
  if alias.exists() and sha(alias)!=result['sha256']:alias.unlink()

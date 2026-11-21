@@ -9,6 +9,26 @@ from manga_bot.manage import add,doctor
 from manga_bot.providers import Google,MODELS
 
 class StudioTests(unittest.TestCase):
+ def test_optional_bad_layout_falls_back_to_verified_panel(self):
+  from manga_bot.visual_layout import capture
+  from unittest.mock import Mock
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);page={'page_id':'ch1-p001','sha256':'original'}
+   panel=dict(id='ch1-p001-panel-001',texts=[],visible_events=[],region=[0,0,1,1])
+   save(root/'pages/ch1-p001.json',dict(reading={'pages':[{'panels':[panel]}]}))
+   anchor=dict(panel_id=panel['id'],source_ids=[],subject_box=dict(left=50,top=20,right=50,bottom=40),kind='character',confidence=.5,description='Subject')
+   api=Mock();api.generate.return_value=dict(complete=True,output={'pages':[dict(page_id=page['page_id'],anchors=[anchor])]})
+   capture(api,root,[page])
+   self.assertEqual(read(root/'visual-layout/ch1-p001.json')['fallback'],'panel_geometry')
+ def test_render_survives_read_ahead_cooldown(self):
+  from manga_bot.media import render_with_read_ahead
+  from unittest.mock import Mock
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);save(root/'inventory.json',dict(pages=[dict(page_id='ch2-p001')]))
+   render=Mock(return_value={'sha256':'finished'})
+   with patch('manga_bot.stages.read_batch',side_effect=Pending('reader cooldown')) as reader:
+    self.assertEqual(render_with_read_ahead(Mock(),root,{},None,root,render),{'sha256':'finished'})
+   reader.assert_called_once();render.assert_called_once()
  def test_reader_only_uses_partial_download_without_freezing_story(self):
   from manga_bot.manage import read_saved_pages
   with tempfile.TemporaryDirectory() as d:
