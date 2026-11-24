@@ -1,9 +1,9 @@
 name: Daily manga worker
 on:
-  schedule:
-    - cron: '47 4 * * *'
-    - cron: '47 10 * * *'
-    - cron: '47 16 * * *'
+#  schedule:
+#    - cron: '47 4 * * *'
+  #  - cron: '47 10 * * *'
+  #  - cron: '47 16 * * *'
   workflow_dispatch:
     inputs:
       manga_url:
